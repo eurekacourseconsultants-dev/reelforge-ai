@@ -128,6 +128,9 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3b.js
 
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg
+
       - name: Stage 4 - Final Encode
         env:
           JOB_ID: ${{ inputs.job_id }}
