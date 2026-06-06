@@ -9,7 +9,6 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY
 const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
 
 async function run() {
-  // Generate portrait prompt via Groq
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -32,13 +31,11 @@ Return only the prompt text, nothing else.`
   const portraitPrompt = groqData.choices[0].message.content.trim()
   console.log('Portrait prompt:', portraitPrompt)
 
-  // Setup Kaggle account
   const account = KAGGLE_POOL[0]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
   fs.mkdirSync(kaggleDir, { recursive: true })
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
 
-  // Write kernel files
   fs.mkdirSync('kaggle-push/portrait', { recursive: true })
   fs.copyFileSync('kaggle-scripts/portrait_runner.py', 'kaggle-push/portrait/portrait_runner.py')
   fs.writeFileSync('kaggle-push/portrait/kernel-metadata.json', JSON.stringify({
@@ -70,16 +67,35 @@ Return only the prompt text, nothing else.`
   console.log('Pushing portrait kernel to Kaggle...')
   execSync('kaggle kernels push -p kaggle-push/portrait', { stdio: 'inherit' })
 
-  // Poll until complete
   console.log('Polling Kaggle for portrait completion...')
   const kernelRef = `${account.username}/reelforge-portrait`
+
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 30000))
-    const result = execSync(`kaggle kernels status ${kernelRef}`).toString()
+
+    // Retry status check up to 5 times on 500 errors
+    let result = null
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        result = execSync(`kaggle kernels status ${kernelRef}`, { stdio: 'pipe' }).toString()
+        break
+      } catch (e) {
+        const errMsg = e.stderr ? e.stderr.toString() : e.message
+        console.log(`Status check attempt ${attempt + 1} failed: ${errMsg.trim()}`)
+        if (attempt < 4) await new Promise(r => setTimeout(r, 15000))
+      }
+    }
+
+    if (!result) {
+      console.log('All status attempts failed this poll cycle, continuing...')
+      continue
+    }
+
     console.log(`Status: ${result.trim()}`)
     if (result.includes('complete')) { console.log('Portrait done.'); return }
     if (result.includes('error') || result.includes('cancel')) throw new Error('Portrait kernel failed')
   }
+
   throw new Error('Portrait kernel timed out')
 }
 
