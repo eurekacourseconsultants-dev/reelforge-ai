@@ -45,9 +45,50 @@ snapshot_download("stabilityai/sd-vae-ft-mse", local_dir="pretrained_weights/sd-
 print("Downloading sd-image-variations-diffusers...")
 snapshot_download("lambdalabs/sd-image-variations-diffusers", local_dir="pretrained_weights/sd-image-variations-diffusers")
 
-print("Downloading whisper tiny.pt...")
+# EchoMimic's bundled whisper wrapper calls load_model(model_path) where model_path
+# comes from config. It does NOT handle file paths ending in .pt — it passes the string
+# to its own load_model() which only accepts names like "tiny" or a download_root dir.
+# Fix: download tiny.pt into the default whisper cache (~/.cache/whisper/) AND
+# patch the infer_acc.yaml config to use the name "tiny" instead of the file path.
+print("Downloading whisper tiny.pt to cache...")
+whisper_cache = os.path.expanduser("~/.cache/whisper")
+os.makedirs(whisper_cache, exist_ok=True)
+ret = os.system(
+    f"wget -q -O {whisper_cache}/tiny.pt "
+    "https://openaipublic.azureedge.net/main/whisper/models/"
+    "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt"
+)
+print(f"wget exit code: {ret}")
+print(f"tiny.pt in cache: {os.path.exists(f'{whisper_cache}/tiny.pt')}")
+print(f"tiny.pt size: {os.path.getsize(f'{whisper_cache}/tiny.pt') if os.path.exists(f'{whisper_cache}/tiny.pt') else 'MISSING'}")
+
+# Patch infer_acc.yaml to use model name "tiny" instead of a file path
+config_path = "configs/prompts/infer_acc.yaml"
+if os.path.exists(config_path):
+    with open(config_path, "r") as f:
+        config_text = f.read()
+    print(f"Original audio_model_path line: {[l for l in config_text.splitlines() if 'audio_model_path' in l]}")
+    # Replace any audio_model_path value with just "tiny"
+    import re
+    config_text = re.sub(r'(audio_model_path\s*:\s*).*', r'\1tiny', config_text)
+    with open(config_path, "w") as f:
+        f.write(config_text)
+    print(f"Patched audio_model_path to: {[l for l in config_text.splitlines() if 'audio_model_path' in l]}")
+else:
+    print(f"WARNING: {config_path} not found — listing configs/prompts/:")
+    os.system("ls -la configs/prompts/ 2>/dev/null || echo 'No configs/prompts dir'")
+
+# Also create the pretrained_weights/audio_processor path with tiny.pt just in case
+# the config points there and EchoMimic's whisper can handle an absolute path
 os.makedirs("pretrained_weights/audio_processor", exist_ok=True)
-os.system("wget -q -O pretrained_weights/audio_processor/tiny.pt https://openaipublic.azureedge.net/main/whisper/models/65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt")
+abs_tiny = os.path.abspath("pretrained_weights/audio_processor/tiny.pt")
+if not os.path.exists(abs_tiny):
+    os.system(
+        f"wget -q -O {abs_tiny} "
+        "https://openaipublic.azureedge.net/main/whisper/models/"
+        "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt"
+    )
+print(f"pretrained_weights/audio_processor/tiny.pt: {os.path.exists(abs_tiny)}")
 
 # Download ffmpeg-static
 print("Downloading ffmpeg-static...")
@@ -56,6 +97,8 @@ os.system("tar -xf ffmpeg-release-amd64-static.tar.xz")
 ffmpeg_dir = [d for d in os.listdir('.') if d.startswith('ffmpeg-') and os.path.isdir(d)][0]
 ffmpeg_path = os.path.abspath(ffmpeg_dir)
 os.environ["FFMPEG_PATH"] = ffmpeg_path
+# Also put ffmpeg binary on PATH so any subprocess call to "ffmpeg" works
+os.environ["PATH"] = ffmpeg_path + ":" + os.environ["PATH"]
 print(f"FFMPEG_PATH={ffmpeg_path}")
 
 os.makedirs("test_imgs", exist_ok=True)
@@ -65,11 +108,22 @@ print("Downloading portrait...")
 r = requests.get(SPOKESPERSON_PHOTO_URL)
 with open("test_imgs/portrait.jpg", "wb") as f:
     f.write(r.content)
+print(f"Portrait saved: {os.path.getsize('test_imgs/portrait.jpg')} bytes")
 
 print("Downloading audio...")
 r = requests.get(AUDIO_URL)
 with open("test_audios/voiceover.mp3", "wb") as f:
     f.write(r.content)
+print(f"Audio saved: {os.path.getsize('test_audios/voiceover.mp3')} bytes")
+
+# Print the final config so we can confirm what infer_acc.py will see
+print("\n--- infer_acc.yaml (audio section) ---")
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        for line in f:
+            if any(k in line for k in ["audio", "ref_img", "output", "steps", "fps", "W", "H"]):
+                print(line.rstrip())
+print("--------------------------------------\n")
 
 print("Running EchoMimic inference...")
 cmd = (
@@ -87,8 +141,11 @@ print(f"Running: {cmd}")
 ret = os.system(cmd)
 print(f"EchoMimic exit code: {ret}")
 
+# Find output mp4
 output_file = None
 for root, dirs, files in os.walk("."):
+    # Skip the pretrained_weights and git dirs to speed up search
+    dirs[:] = [d for d in dirs if d not in ["pretrained_weights", ".git", "ffmpeg-7.0.2-amd64-static"]]
     for f in files:
         if f.endswith(".mp4"):
             output_file = os.path.join(root, f)
@@ -97,14 +154,17 @@ for root, dirs, files in os.walk("."):
     if output_file:
         break
 
+# List outputs dir for debugging
+print("Listing ./outputs/ (if exists):")
+os.system("ls -lh outputs/ 2>/dev/null || echo 'no outputs dir'")
+print("Listing ./results/ (if exists):")
+os.system("ls -lh results/ 2>/dev/null || echo 'no results dir'")
+
 if not output_file or not os.path.exists(output_file):
-    print("Files in working dir (excluding large dirs):")
-    for root, dirs, files in os.walk("."):
-        dirs[:] = [d for d in dirs if d not in ['.git', 'assets', 'pretrained_weights', 'ffmpeg-7.0.2-amd64-static', 'EMTD_dataset']]
-        for f in files:
-            print(os.path.join(root, f))
     patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
     raise RuntimeError("No output.mp4 found")
+
+print(f"Output file: {output_file} ({os.path.getsize(output_file)} bytes)")
 
 print("Uploading to R2...")
 s3 = boto3.client(
