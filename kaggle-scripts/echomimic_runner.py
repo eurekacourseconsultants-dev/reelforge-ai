@@ -2,7 +2,7 @@ import os
 import requests
 import sys
 
-os.system("apt-get install -y git ffmpeg")
+os.system("apt-get install -y git ffmpeg --fix-missing")
 os.system("pip install -q torch==2.5.1 torchvision torchaudio xformers torchao boto3 huggingface_hub")
 
 JOB_ID = os.environ["JOB_ID"]

@@ -129,7 +129,7 @@ jobs:
         run: node scripts/stage3b.js
 
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg
+        run: sudo apt-get install -y ffmpeg --fix-missing
 
       - name: Stage 4 - Final Encode
         env:
