@@ -1,4 +1,3 @@
-// Stage 0 - Generate portrait via Kaggle FLUX.1-schnell
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -14,16 +13,7 @@ async function run() {
     headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
-      messages: [{
-        role: 'user',
-        content: `Generate a photorealistic portrait prompt for FLUX.1 image generation.
-Gender: ${PORTRAIT_PREFS.gender || 'neutral'}
-Age range: ${PORTRAIT_PREFS.age || '30s'}
-Style: ${PORTRAIT_PREFS.style || 'Professional'}
-
-Requirements: front-facing camera, clean neutral background, soft even lighting, upper body visible (head + shoulders + chest), no sunglasses, no accessories, 768x768, ultra-realistic.
-Return only the prompt text, nothing else.`
-      }],
+      messages: [{ role: 'user', content: `Generate a photorealistic portrait prompt for FLUX.1 image generation.\nGender: ${PORTRAIT_PREFS.gender || 'neutral'}\nAge range: ${PORTRAIT_PREFS.age || '30s'}\nStyle: ${PORTRAIT_PREFS.style || 'Professional'}\nRequirements: front-facing camera, clean neutral background, soft even lighting, upper body visible, no sunglasses, no accessories, 768x768, ultra-realistic.\nReturn only the prompt text, nothing else.` }],
       max_tokens: 200,
     })
   })
@@ -38,23 +28,24 @@ Return only the prompt text, nothing else.`
 
   fs.mkdirSync('kaggle-push/portrait', { recursive: true })
 
-  // Inject env vars directly into the script
   const baseScript = fs.readFileSync('kaggle-scripts/portrait_runner.py', 'utf8')
-  const injected = `import os
-os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}
-os.environ["PORTRAIT_PROMPT"] = ${JSON.stringify(portraitPrompt)}
-os.environ["SUPABASE_URL"] = ${JSON.stringify(process.env.SUPABASE_URL)}
-os.environ["SUPABASE_KEY"] = ${JSON.stringify(process.env.SUPABASE_KEY)}
-os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}
-os.environ["R2_ACCESS_KEY_ID"] = ${JSON.stringify(process.env.R2_ACCESS_KEY_ID)}
-os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}
-os.environ["R2_BUCKET_NAME"] = ${JSON.stringify(process.env.R2_BUCKET_NAME)}
-os.environ["R2_PUBLIC_URL"] = ${JSON.stringify(process.env.R2_PUBLIC_URL)}
-
-${baseScript}`
+  const injected = [
+    'import os',
+    `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
+    `os.environ["PORTRAIT_PROMPT"] = ${JSON.stringify(portraitPrompt)}`,
+    `os.environ["HF_TOKEN"] = ${JSON.stringify(process.env.HF_TOKEN)}`,
+    `os.environ["SUPABASE_URL"] = ${JSON.stringify(process.env.SUPABASE_URL)}`,
+    `os.environ["SUPABASE_KEY"] = ${JSON.stringify(process.env.SUPABASE_KEY)}`,
+    `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,
+    `os.environ["R2_ACCESS_KEY_ID"] = ${JSON.stringify(process.env.R2_ACCESS_KEY_ID)}`,
+    `os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}`,
+    `os.environ["R2_BUCKET_NAME"] = ${JSON.stringify(process.env.R2_BUCKET_NAME)}`,
+    `os.environ["R2_PUBLIC_URL"] = ${JSON.stringify(process.env.R2_PUBLIC_URL)}`,
+    '',
+    baseScript
+  ].join('\n')
 
   fs.writeFileSync('kaggle-push/portrait/portrait_runner.py', injected)
-
   fs.writeFileSync('kaggle-push/portrait/kernel-metadata.json', JSON.stringify({
     id: `${account.username}/reelforge-portrait`,
     title: 'reelforge-portrait',
@@ -78,29 +69,21 @@ ${baseScript}`
 
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 30000))
-
     let result = null
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         result = execSync(`kaggle kernels status ${kernelRef}`, { stdio: 'pipe' }).toString()
         break
       } catch (e) {
-        const errMsg = e.stderr ? e.stderr.toString() : e.message
-        console.log(`Status check attempt ${attempt + 1} failed: ${errMsg.trim()}`)
+        console.log(`Status attempt ${attempt + 1} failed, retrying...`)
         if (attempt < 4) await new Promise(r => setTimeout(r, 15000))
       }
     }
-
-    if (!result) {
-      console.log('All status attempts failed this poll cycle, continuing...')
-      continue
-    }
-
+    if (!result) { console.log('Poll cycle failed, continuing...'); continue }
     console.log(`Status: ${result.trim()}`)
     if (result.includes('complete')) { console.log('Portrait done.'); return }
     if (result.includes('error') || result.includes('cancel')) throw new Error('Portrait kernel failed')
   }
-
   throw new Error('Portrait kernel timed out')
 }
 
