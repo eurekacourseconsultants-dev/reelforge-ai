@@ -3,22 +3,21 @@ import sys
 import subprocess
 import requests
 
-# Install compatible PyTorch for P100 (CUDA 11.8, sm_60)
+# Install required packages (use pre-installed torch)
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "torch==2.1.2", "torchvision==0.16.2",
-    "--index-url", "https://download.pytorch.org/whl/cu118"
-], check=True)
-
-subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q",
-    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub"
+    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub", "sentencepiece"
 ], check=True)
 
 import torch
 import boto3
 from diffusers import FluxPipeline
 from huggingface_hub import snapshot_download
+
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 JOB_ID = os.environ["JOB_ID"]
 PORTRAIT_PROMPT = os.environ["PORTRAIT_PROMPT"]
