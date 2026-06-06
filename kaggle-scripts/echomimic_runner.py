@@ -63,6 +63,7 @@ print(f"tiny.pt in cache: {os.path.exists(f'{whisper_cache}/tiny.pt')}")
 print(f"tiny.pt size: {os.path.getsize(f'{whisper_cache}/tiny.pt') if os.path.exists(f'{whisper_cache}/tiny.pt') else 'MISSING'}")
 
 # Patch infer_acc.yaml using yaml library
+# Structure is test_cases: {portrait_path: [audio_path, pose_path]}
 config_path = "configs/prompts/infer_acc.yaml"
 import re
 import yaml
@@ -70,15 +71,16 @@ if os.path.exists(config_path):
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
     cfg["audio_model_path"] = "tiny"
-    cfg["audio_list"] = ["./test_audios/voiceover.mp3"]
-    cfg["refimg_list"] = ["./test_imgs/portrait.jpg"]
-    cfg["pose_list"] = ["./assets/halfbody_demo/pose/01/"]
+    cfg["test_cases"] = {
+        "./test_imgs/portrait.jpg": [
+            "./test_audios/voiceover.mp3",
+            "./assets/halfbody_demo/pose/01/"
+        ]
+    }
     with open(config_path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-    print("Patched infer_acc.yaml via yaml.dump")
-    print(f"audio_list: {cfg['audio_list']}")
-    print(f"refimg_list: {cfg['refimg_list']}")
-    print(f"pose_list: {cfg['pose_list']}")
+    print("Patched infer_acc.yaml — test_cases set to our portrait+audio")
+    print(f"test_cases: {cfg['test_cases']}")
 
 else:
     print(f"WARNING: {config_path} not found — listing configs/prompts/:")
