@@ -1,5 +1,7 @@
 import os
 import requests
+import subprocess
+import sys
 
 os.system("apt-get install -y git ffmpeg")
 os.system("pip install -q torch==2.5.1 torchvision torchaudio xformers torchao boto3 huggingface_hub")
@@ -37,6 +39,15 @@ from huggingface_hub import snapshot_download
 print("Downloading EchoMimic V2 weights...")
 snapshot_download("BadToBest/EchoMimicV2", local_dir="pretrained_weights")
 
+# Download ffmpeg-static (required by EchoMimic)
+print("Downloading ffmpeg-static...")
+os.system("wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz")
+os.system("tar -xf ffmpeg-release-amd64-static.tar.xz")
+ffmpeg_dir = [d for d in os.listdir('.') if d.startswith('ffmpeg-') and os.path.isdir(d)][0]
+ffmpeg_path = os.path.abspath(ffmpeg_dir)
+os.environ["FFMPEG_PATH"] = ffmpeg_path
+print(f"FFMPEG_PATH={ffmpeg_path}")
+
 print("Downloading portrait...")
 r = requests.get(SPOKESPERSON_PHOTO_URL)
 with open("portrait.jpg", "wb") as f:
@@ -47,19 +58,42 @@ r = requests.get(AUDIO_URL)
 with open("voiceover.mp3", "wb") as f:
     f.write(r.content)
 
-print("Running EchoMimic inference...")
-os.system(
-    "python infer_acc.py "
-    "--ref_img portrait.jpg "
-    "--audio voiceover.mp3 "
-    "--output output.mp4 "
-    "--num_frames 720 "
-    "--fps 24"
-)
+# Set up input dirs as EchoMimic expects
+os.makedirs("test_imgs", exist_ok=True)
+os.makedirs("test_audios", exist_ok=True)
+os.system("cp portrait.jpg test_imgs/portrait.jpg")
+os.system("cp voiceover.mp3 test_audios/voiceover.mp3")
 
-if not os.path.exists("output.mp4"):
+print("Running EchoMimic inference...")
+cmd = (
+    f"FFMPEG_PATH={ffmpeg_path} python infer_acc.py "
+    f"--refimg_name portrait.jpg "
+    f"--audio_name voiceover.mp3 "
+    f"--ref_images_dir test_imgs "
+    f"--audio_dir test_audios "
+    f"--output output.mp4 "
+    f"--W 512 --H 512 "
+    f"--fps 24 "
+    f"--steps 20 "
+    f"--device cuda"
+)
+ret = os.system(cmd)
+print(f"EchoMimic exit code: {ret}")
+
+# Find output - EchoMimic may save to a different path
+output_file = None
+for root, dirs, files in os.walk("."):
+    for f in files:
+        if f.endswith(".mp4"):
+            output_file = os.path.join(root, f)
+            print(f"Found output: {output_file}")
+            break
+    if output_file:
+        break
+
+if not output_file or not os.path.exists(output_file):
     patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
-    raise RuntimeError("output.mp4 not found")
+    raise RuntimeError("No output.mp4 found")
 
 print("Uploading to R2...")
 s3 = boto3.client(
@@ -69,7 +103,7 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 r2_key = f"raw/{JOB_ID}.mp4"
-s3.upload_file("output.mp4", R2_BUCKET_NAME, r2_key)
+s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
 r2_url = f"{R2_PUBLIC_URL}/{r2_key}"
 
 patch_supabase({"status": "video_ready", "raw_video_url": r2_url})
