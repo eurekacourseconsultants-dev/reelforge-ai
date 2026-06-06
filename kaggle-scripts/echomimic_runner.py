@@ -146,6 +146,7 @@ cmd = (
     f"-W 768 -H 768 "
     f"--fps 24 "
     f"--steps 10 "
+    f"--cfg 2.0 "
     f"--device cuda"
 )
 print(f"Running: {cmd}")
