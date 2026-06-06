@@ -132,7 +132,7 @@ cmd = (
     f"--audio_name voiceover.mp3 "
     f"--ref_images_dir test_imgs "
     f"--audio_dir test_audios "
-    f"-W 512 -H 512 "
+    f"-W 768 -H 768 "
     f"--fps 24 "
     f"--steps 20 "
     f"--device cuda"
