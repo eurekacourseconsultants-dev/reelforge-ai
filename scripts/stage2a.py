@@ -25,20 +25,30 @@ pipeline = KPipeline(lang_code='a')
 generator = pipeline(script, voice='af_heart', speed=1.0)
 
 chunks = []
-sample_rate = None
+sample_rate = 24000
 for chunk in generator:
     audio = chunk.audio
     if hasattr(audio, 'numpy'):
         audio = audio.numpy()
+    elif hasattr(audio, 'cpu'):
+        audio = audio.cpu().numpy()
     chunks.append(audio)
-    if sample_rate is None:
-        sample_rate = chunk.sample_rate if hasattr(chunk, 'sample_rate') else 24000
+    if hasattr(chunk, 'sample_rate') and chunk.sample_rate:
+        sample_rate = chunk.sample_rate
 
 audio_data = np.concatenate(chunks)
 sf.write("voiceover.wav", audio_data, sample_rate)
+print(f"WAV saved: {os.path.getsize('voiceover.wav')} bytes")
 
-# Convert to mp3
-os.system("ffmpeg -i voiceover.wav -b:a 128k voiceover.mp3 -y")
+# Convert WAV to MP3
+ret = os.system("ffmpeg -i voiceover.wav -b:a 128k voiceover.mp3 -y 2>&1")
+print(f"ffmpeg exit code: {ret}")
+
+if not os.path.exists("voiceover.mp3") or os.path.getsize("voiceover.mp3") == 0:
+    print("MP3 conversion failed, uploading WAV directly as MP3...")
+    os.rename("voiceover.wav", "voiceover.mp3")
+
+print(f"Audio file size: {os.path.getsize('voiceover.mp3')} bytes")
 
 print("Uploading voiceover to R2...")
 s3 = boto3.client(
@@ -51,7 +61,6 @@ r2_key = f"audio/{JOB_ID}.mp3"
 s3.upload_file("voiceover.mp3", R2_BUCKET_NAME, r2_key)
 audio_url = f"{R2_PUBLIC_URL}/{r2_key}"
 
-# Save audio URL for stage 3a
 with open("audio_url.txt", "w") as f:
     f.write(audio_url)
 
