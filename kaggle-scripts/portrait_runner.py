@@ -3,16 +3,9 @@ import sys
 import subprocess
 import requests
 
-# Install PyTorch 2.0.1 with CUDA 11.7 - supports P100 (sm_60)
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "torch==2.0.1", "torchvision==0.15.2",
-    "--index-url", "https://download.pytorch.org/whl/cu117"
-], check=True)
-
-subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q",
-    "diffusers==0.21.4", "transformers", "accelerate", "boto3", "huggingface_hub"
+    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub"
 ], check=True)
 
 import torch
@@ -35,13 +28,12 @@ gender = prefs.get("gender", "person")
 age = prefs.get("age", "30s")
 style = prefs.get("style", "professional")
 
-# Keep prompt short - SD 1.5 CLIP max is 77 tokens
+# Short prompt - SD 1.5 CLIP max is 77 tokens
 full_prompt = f"portrait photo of a {age} {gender}, {style} attire, front facing, neutral background, soft lighting, upper body, photorealistic"
-negative_prompt = "sunglasses, cartoon, anime, blurry, side view, looking away, low quality"
+negative_prompt = "sunglasses, cartoon, anime, blurry, side view, low quality"
 
 print(f"Prompt: {full_prompt}")
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
+print("Running on CPU to avoid CUDA compatibility issues")
 
 def patch_supabase(data):
     requests.patch(
@@ -53,19 +45,18 @@ def patch_supabase(data):
 print("Loading SD 1.5 pipeline...")
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float32,
     safety_checker=None,
 )
-pipe = pipe.to("cuda")
-pipe.enable_attention_slicing()
+pipe = pipe.to("cpu")
 
-print("Generating portrait...")
+print("Generating portrait (CPU - takes 3-5 min)...")
 image = pipe(
     full_prompt,
     negative_prompt=negative_prompt,
     height=512,
     width=512,
-    num_inference_steps=30,
+    num_inference_steps=20,
     guidance_scale=7.5,
 ).images[0]
 
