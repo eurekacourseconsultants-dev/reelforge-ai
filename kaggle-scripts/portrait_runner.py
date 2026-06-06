@@ -5,16 +5,12 @@ import requests
 
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub", "sentencepiece"
+    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub"
 ], check=True)
 
 import torch
 import boto3
-from diffusers import FluxPipeline
-from huggingface_hub import snapshot_download, login
-
-HF_TOKEN = os.environ["HF_TOKEN"]
-login(token=HF_TOKEN)
+from diffusers import StableDiffusionPipeline
 
 JOB_ID = os.environ["JOB_ID"]
 PORTRAIT_PROMPT = os.environ["PORTRAIT_PROMPT"]
@@ -26,9 +22,6 @@ R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
 R2_BUCKET_NAME = os.environ["R2_BUCKET_NAME"]
 R2_PUBLIC_URL = os.environ["R2_PUBLIC_URL"]
 
-print(f"PyTorch version: {torch.__version__}")
-print(f"CUDA available: {torch.cuda.is_available()}")
-
 def patch_supabase(data):
     requests.patch(
         f"{SUPABASE_URL}/rest/v1/jobs?id=eq.{JOB_ID}",
@@ -36,16 +29,28 @@ def patch_supabase(data):
         json=data,
     )
 
-print("Downloading FLUX.1-schnell weights...")
-snapshot_download("black-forest-labs/FLUX.1-schnell", token=HF_TOKEN)
+print("Loading SD 1.5 pipeline...")
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+    safety_checker=None,
+)
+pipe = pipe.to("cuda")
+pipe.enable_attention_slicing()
 
-print("Loading pipeline...")
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.float16, token=HF_TOKEN)
-pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+full_prompt = PORTRAIT_PROMPT + ", photorealistic, front-facing, neutral background, soft lighting, upper body, no sunglasses, 768x768"
+negative_prompt = "sunglasses, accessories, blurry, cartoon, anime, painting, low quality, side view, looking away"
 
 print("Generating portrait...")
-image = pipe(PORTRAIT_PROMPT, height=768, width=768, num_inference_steps=4, guidance_scale=0.0).images[0]
+image = pipe(
+    full_prompt,
+    negative_prompt=negative_prompt,
+    height=768,
+    width=512,
+    num_inference_steps=30,
+    guidance_scale=7.5,
+).images[0]
+
 image.save("portrait.jpg")
 print("Portrait saved.")
 
