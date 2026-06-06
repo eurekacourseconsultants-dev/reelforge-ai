@@ -45,8 +45,9 @@ snapshot_download("stabilityai/sd-vae-ft-mse", local_dir="pretrained_weights/sd-
 print("Downloading sd-image-variations-diffusers...")
 snapshot_download("lambdalabs/sd-image-variations-diffusers", local_dir="pretrained_weights/sd-image-variations-diffusers")
 
-print("Downloading whisper tiny model...")
-snapshot_download("openai/whisper-tiny", local_dir="pretrained_weights/whisper")
+print("Downloading whisper tiny.pt...")
+os.makedirs("pretrained_weights/audio_processor", exist_ok=True)
+os.system("wget -q -O pretrained_weights/audio_processor/tiny.pt https://openaipublic.azureedge.net/main/whisper/models/65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt")
 
 # Download ffmpeg-static
 print("Downloading ffmpeg-static...")
@@ -97,7 +98,7 @@ for root, dirs, files in os.walk("."):
         break
 
 if not output_file or not os.path.exists(output_file):
-    print("Files in working dir (excluding assets/pretrained/git):")
+    print("Files in working dir (excluding large dirs):")
     for root, dirs, files in os.walk("."):
         dirs[:] = [d for d in dirs if d not in ['.git', 'assets', 'pretrained_weights', 'ffmpeg-7.0.2-amd64-static', 'EMTD_dataset']]
         for f in files:
