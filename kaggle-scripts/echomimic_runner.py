@@ -73,7 +73,7 @@ if os.path.exists(config_path):
     cfg["audio_model_path"] = "tiny"
     cfg["test_cases"] = {
         "./test_imgs/portrait.jpg": [
-            "./test_audios/voiceover.mp3",
+            "./test_audios/voiceover.wav",
             "./assets/halfbody_demo/pose/01/"
         ]
     }
@@ -123,6 +123,9 @@ r = requests.get(AUDIO_URL)
 with open("test_audios/voiceover.mp3", "wb") as f:
     f.write(r.content)
 print(f"Audio saved: {os.path.getsize('test_audios/voiceover.mp3')} bytes")
+print("Converting audio to wav...")
+os.system(f"{ffmpeg_path}/ffmpeg -i test_audios/voiceover.mp3 test_audios/voiceover.wav -y")
+print(f"WAV saved: {os.path.getsize('test_audios/voiceover.wav')} bytes")
 
 # Print the final config so we can confirm what infer_acc.py will see
 print("\n--- infer_acc.yaml (audio section) ---")
