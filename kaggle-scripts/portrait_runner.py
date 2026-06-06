@@ -29,8 +29,8 @@ gender = prefs.get("gender", "woman")
 age = prefs.get("age", "20s")
 style = prefs.get("style", "professional")
 
-full_prompt = f"professional headshot photo of a {age} Asian {gender}, {style} attire, full head and face visible, centered in frame, forehead to upper chest, looking directly at camera, neutral grey background, soft studio lighting, photorealistic, sharp focus"
-negative_prompt = "cut off head, cropped forehead, sunglasses, hat, cartoon, anime, blurry, side view, low quality, deformed, bad anatomy, extra limbs, full body"
+full_prompt = f"professional headshot photo of a {age} Asian {gender}, plain solid color top, no jacket, no blazer, no lapels, face looking directly into camera, perfectly frontal pose, symmetrical, forehead to upper chest, neutral grey background, soft studio lighting, photorealistic, sharp focus, high resolution"
+negative_prompt = "cut off head, cropped forehead, sunglasses, hat, cartoon, anime, blurry, side view, angled pose, turned head, three quarter view, low quality, deformed, bad anatomy, extra limbs, full body, jacket, blazer, suit, tie, complex clothing"
 
 print(f"Prompt: {full_prompt}")
 
