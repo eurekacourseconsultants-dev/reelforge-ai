@@ -56,6 +56,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: node scripts/stage0.js
 
       - name: Stage 1 - Classify and Script
@@ -89,6 +90,7 @@ jobs:
         env:
           JOB_ID: ${{ inputs.job_id }}
           KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -103,6 +105,7 @@ jobs:
         env:
           JOB_ID: ${{ inputs.job_id }}
           KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
