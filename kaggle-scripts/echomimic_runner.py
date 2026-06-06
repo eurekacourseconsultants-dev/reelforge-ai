@@ -29,135 +29,116 @@ def patch_supabase(data):
         json=data,
     )
 
-print("Cloning EchoMimic V2...")
-os.system("git clone https://github.com/antgroup/echomimic_v2")
-os.chdir("echomimic_v2")
+print("Cloning EchoMimicV3...")
+os.system("git clone https://github.com/antgroup/echomimic_v3")
+os.chdir("echomimic_v3")
 os.system("pip install -q -r requirements.txt")
 
 from huggingface_hub import snapshot_download
 
-print("Downloading EchoMimic V2 weights...")
-snapshot_download("BadToBest/EchoMimicV2", local_dir="pretrained_weights")
-
-print("Downloading sd-vae-ft-mse...")
-snapshot_download("stabilityai/sd-vae-ft-mse", local_dir="pretrained_weights/sd-vae-ft-mse")
-
-print("Downloading sd-image-variations-diffusers...")
-snapshot_download("lambdalabs/sd-image-variations-diffusers", local_dir="pretrained_weights/sd-image-variations-diffusers")
-
-# EchoMimic's bundled whisper wrapper calls load_model(model_path) where model_path
-# comes from config. It does NOT handle file paths ending in .pt — it passes the string
-# to its own load_model() which only accepts names like "tiny" or a download_root dir.
-# Fix: download tiny.pt into the default whisper cache (~/.cache/whisper/) AND
-# patch the infer_acc.yaml config to use the name "tiny" instead of the file path.
-print("Downloading whisper tiny.pt to cache...")
-whisper_cache = os.path.expanduser("~/.cache/whisper")
-os.makedirs(whisper_cache, exist_ok=True)
-ret = os.system(
-    f"wget -q -O {whisper_cache}/tiny.pt "
-    "https://openaipublic.azureedge.net/main/whisper/models/"
-    "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt"
+# --- Download models ---
+print("Downloading Wan2.1-Fun-V1.1-1.3B-InP base model...")
+snapshot_download(
+    "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP",
+    local_dir="flash/Wan2.1-Fun-V1.1-1.3B-InP"
 )
-print(f"wget exit code: {ret}")
-print(f"tiny.pt in cache: {os.path.exists(f'{whisper_cache}/tiny.pt')}")
-print(f"tiny.pt size: {os.path.getsize(f'{whisper_cache}/tiny.pt') if os.path.exists(f'{whisper_cache}/tiny.pt') else 'MISSING'}")
 
-# Patch infer_acc.yaml using yaml library
-# Structure is test_cases: {portrait_path: [audio_path, pose_path]}
-config_path = "configs/prompts/infer_acc.yaml"
-import re
-import yaml
-if os.path.exists(config_path):
-    with open(config_path, "r") as f:
-        cfg = yaml.safe_load(f)
-    cfg["audio_model_path"] = "tiny"
-    cfg["test_cases"] = {
-        "./test_imgs/portrait.jpg": [
-            "./test_audios/voiceover.wav",
-            "./assets/halfbody_demo/pose/01/"
-        ]
-    }
-    with open(config_path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-    print("Patched infer_acc.yaml — test_cases set to our portrait+audio")
-    print(f"test_cases: {cfg['test_cases']}")
+print("Downloading chinese-wav2vec2-base audio encoder...")
+snapshot_download(
+    "TencentGameMate/chinese-wav2vec2-base",
+    local_dir="flash/chinese-wav2vec2-base"
+)
 
-else:
-    print(f"WARNING: {config_path} not found — listing configs/prompts/:")
-    os.system("ls -la configs/prompts/ 2>/dev/null || echo 'No configs/prompts dir'")
+print("Downloading EchoMimicV3-Flash-Pro weights...")
+snapshot_download(
+    "BadToBest/EchoMimicV3",
+    local_dir="flash_weights_tmp",
+    allow_patterns=["echomimicv3-flash-pro/*"]
+)
+# Move transformer weights into expected location
+os.makedirs("flash/transformer", exist_ok=True)
+os.system("cp flash_weights_tmp/echomimicv3-flash-pro/transformer/diffusion_pytorch_model.safetensors flash/transformer/")
+print(f"Flash transformer weights: {os.path.exists('flash/transformer/diffusion_pytorch_model.safetensors')}")
 
-# Also create the pretrained_weights/audio_processor path with tiny.pt just in case
-# the config points there and EchoMimic's whisper can handle an absolute path
-os.makedirs("pretrained_weights/audio_processor", exist_ok=True)
-abs_tiny = os.path.abspath("pretrained_weights/audio_processor/tiny.pt")
-if not os.path.exists(abs_tiny):
-    os.system(
-        f"wget -q -O {abs_tiny} "
-        "https://openaipublic.azureedge.net/main/whisper/models/"
-        "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9/tiny.pt"
-    )
-print(f"pretrained_weights/audio_processor/tiny.pt: {os.path.exists(abs_tiny)}")
-
-# Download ffmpeg-static
+# --- Download ffmpeg static ---
 print("Downloading ffmpeg-static...")
 os.system("wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz")
 os.system("tar -xf ffmpeg-release-amd64-static.tar.xz")
 ffmpeg_dir = [d for d in os.listdir('.') if d.startswith('ffmpeg-') and os.path.isdir(d)][0]
 ffmpeg_path = os.path.abspath(ffmpeg_dir)
 os.environ["FFMPEG_PATH"] = ffmpeg_path
-# Also put ffmpeg binary on PATH so any subprocess call to "ffmpeg" works
 os.environ["PATH"] = ffmpeg_path + ":" + os.environ["PATH"]
 print(f"FFMPEG_PATH={ffmpeg_path}")
 
-os.makedirs("test_imgs", exist_ok=True)
-os.makedirs("test_audios", exist_ok=True)
+# --- Download portrait and audio ---
+os.makedirs("inputs", exist_ok=True)
+os.makedirs("outputs", exist_ok=True)
 
 print("Downloading portrait...")
 r = requests.get(SPOKESPERSON_PHOTO_URL)
-with open("test_imgs/portrait.jpg", "wb") as f:
+with open("inputs/portrait.jpg", "wb") as f:
     f.write(r.content)
-print(f"Portrait saved: {os.path.getsize('test_imgs/portrait.jpg')} bytes")
+print(f"Portrait saved: {os.path.getsize('inputs/portrait.jpg')} bytes")
 
 print("Downloading audio...")
 r = requests.get(AUDIO_URL)
-with open("test_audios/voiceover.mp3", "wb") as f:
+with open("inputs/voiceover.mp3", "wb") as f:
     f.write(r.content)
-print(f"Audio saved: {os.path.getsize('test_audios/voiceover.mp3')} bytes")
+print(f"Audio saved: {os.path.getsize('inputs/voiceover.mp3')} bytes")
+
 print("Converting audio to wav...")
-os.system(f"{ffmpeg_path}/ffmpeg -i test_audios/voiceover.mp3 test_audios/voiceover.wav -y")
-print(f"WAV saved: {os.path.getsize('test_audios/voiceover.wav')} bytes")
+os.system(f"{ffmpeg_path}/ffmpeg -i inputs/voiceover.mp3 inputs/voiceover.wav -y")
+print(f"WAV saved: {os.path.getsize('inputs/voiceover.wav')} bytes")
 
-# Print the final config so we can confirm what infer_acc.py will see
-print("\n--- infer_acc.yaml (audio section) ---")
-if os.path.exists(config_path):
-    with open(config_path) as f:
-        for line in f:
-            if any(k in line for k in ["audio", "ref_img", "output", "steps", "fps", "W", "H"]):
-                print(line.rstrip())
-print("--------------------------------------\n")
+# --- Run EchoMimicV3 Flash inference ---
+# Key parameters:
+# --num_inference_steps 8  (flash-pro supports 8-step high quality)
+# --video_length 81        (reduce if OOM — try 65 or 49)
+# --sample_size 512 512    (reduce from 768 to fit P100 16GB)
+# --audio_guidance_scale 2.0 (optimal range 1.8-2.0)
+# --guidance_scale 5.0     (optimal range 3-6)
+# --enable_teacache        (speeds up generation, reduces VRAM)
+# --teacache_threshold 0.1 (optimal range 0-0.1)
+# --weight_dtype bfloat16  (P100 supports bfloat16)
 
-print("Running EchoMimic inference...")
+print("Running EchoMimicV3 Flash inference...")
 cmd = (
-    f"FFMPEG_PATH={ffmpeg_path} python infer_acc.py "
-    f"--refimg_name portrait.jpg "
-    f"--audio_name voiceover.mp3 "
-    f"--ref_images_dir test_imgs "
-    f"--audio_dir test_audios "
-    f"-W 768 -H 768 "
-    f"--fps 24 "
-    f"--steps 10 "
-    f"--cfg 2.0 "
-    f"--device cuda"
+    f"python infer_flash.py "
+    f"--image_path inputs/portrait.jpg "
+    f"--audio_path inputs/voiceover.wav "
+    f"--prompt 'A person is speaking naturally, looking at camera.' "
+    f"--num_inference_steps 8 "
+    f"--config_path config/config.yaml "
+    f"--model_name flash/Wan2.1-Fun-V1.1-1.3B-InP "
+    f"--transformer_path flash/transformer/diffusion_pytorch_model.safetensors "
+    f"--save_path outputs "
+    f"--wav2vec_model_dir flash/chinese-wav2vec2-base "
+    f"--sampler_name Flow_Unipc "
+    f"--video_length 81 "
+    f"--guidance_scale 5.0 "
+    f"--audio_guidance_scale 2.0 "
+    f"--audio_scale 1.0 "
+    f"--neg_scale 1.0 "
+    f"--neg_steps 0 "
+    f"--seed 43 "
+    f"--enable_teacache "
+    f"--teacache_threshold 0.1 "
+    f"--num_skip_start_steps 5 "
+    f"--riflex_k 6 "
+    f"--ulysses_degree 1 "
+    f"--ring_degree 1 "
+    f"--weight_dtype bfloat16 "
+    f"--sample_size 512 512 "
+    f"--fps 25 "
+    f"--shift 5.0"
 )
 print(f"Running: {cmd}")
 ret = os.system(cmd)
-print(f"EchoMimic exit code: {ret}")
+print(f"EchoMimicV3 exit code: {ret}")
 
-# Find output mp4
+# --- Find output mp4 ---
 output_file = None
-for root, dirs, files in os.walk("."):
-    # Skip the pretrained_weights and git dirs to speed up search
-    dirs[:] = [d for d in dirs if d not in ["pretrained_weights", ".git", "ffmpeg-7.0.2-amd64-static"]]
+for root, dirs, files in os.walk("outputs"):
     for f in files:
         if f.endswith(".mp4"):
             output_file = os.path.join(root, f)
@@ -166,15 +147,12 @@ for root, dirs, files in os.walk("."):
     if output_file:
         break
 
-# List outputs dir for debugging
-print("Listing ./outputs/ (if exists):")
+print("Listing ./outputs/:")
 os.system("ls -lh outputs/ 2>/dev/null || echo 'no outputs dir'")
-print("Listing ./results/ (if exists):")
-os.system("ls -lh results/ 2>/dev/null || echo 'no results dir'")
 
 if not output_file or not os.path.exists(output_file):
-    patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
-    raise RuntimeError("No output.mp4 found")
+    patch_supabase({"status": "failed", "error": "EchoMimicV3 produced no output"})
+    raise RuntimeError("No output mp4 found")
 
 print(f"Output file: {output_file} ({os.path.getsize(output_file)} bytes)")
 

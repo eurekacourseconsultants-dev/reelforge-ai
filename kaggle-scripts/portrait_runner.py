@@ -54,16 +54,19 @@ def is_frontal(image_path, threshold=0.25):
     return offset < threshold
 
 prompts = [
-    f"passport photo of a {age} asian {gender}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic",
-    f"id card photo of a {age} asian {gender}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic",
-    f"mugshot style portrait of a {age} asian {gender}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic",
-    f"professional headshot of a {age} asian {gender}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic",
+    f"RAW photo, passport photo of a {age} asian {gender}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic, 8k uhd, dslr, high quality",
+    f"RAW photo, id card photo of a {age} asian {gender}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic, high quality skin",
+    f"RAW photo, mugshot style portrait of a {age} asian {gender}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic, natural skin tones",
+    f"RAW photo, professional headshot of a {age} asian {gender}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic, color photo",
 ]
-negative_prompt = "side view, profile, three quarter view, angled, turned, looking away, sunglasses, hat, cartoon, anime, blurry, low quality, deformed, full body, jacket, blazer, suit, hands, arms, dynamic pose"
+negative_prompt = "monochrome, grayscale, black and white, side view, profile, three quarter view, angled, turned, looking away, sunglasses, hat, cartoon, anime, blurry, low quality, deformed, full body, jacket, blazer, suit, hands, arms, dynamic pose"
 
-print("Loading SD 1.5 pipeline on CPU...")
+# Realistic Vision V6.0 — same SD 1.5 architecture, same memory footprint,
+# but fine-tuned specifically for photorealistic portraits with natural skin tones
+# and colour output. Drop-in replacement for runwayml/stable-diffusion-v1-5.
+print("Loading Realistic Vision V6.0 pipeline on CPU...")
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "SG161222/Realistic_Vision_V6.0_B1_noVAE",
     torch_dtype=torch.float32,
     safety_checker=None,
 )
