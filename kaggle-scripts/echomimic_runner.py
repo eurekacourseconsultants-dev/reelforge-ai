@@ -48,39 +48,38 @@ ffmpeg_path = os.path.abspath(ffmpeg_dir)
 os.environ["FFMPEG_PATH"] = ffmpeg_path
 print(f"FFMPEG_PATH={ffmpeg_path}")
 
+# Set up input dirs as EchoMimic expects
+os.makedirs("test_imgs", exist_ok=True)
+os.makedirs("test_audios", exist_ok=True)
+
 print("Downloading portrait...")
 r = requests.get(SPOKESPERSON_PHOTO_URL)
-with open("portrait.jpg", "wb") as f:
+with open("test_imgs/portrait.jpg", "wb") as f:
     f.write(r.content)
 
 print("Downloading audio...")
 r = requests.get(AUDIO_URL)
-with open("voiceover.mp3", "wb") as f:
+with open("test_audios/voiceover.mp3", "wb") as f:
     f.write(r.content)
 
-# Set up input dirs as EchoMimic expects
-os.makedirs("test_imgs", exist_ok=True)
-os.makedirs("test_audios", exist_ok=True)
-os.system("cp portrait.jpg test_imgs/portrait.jpg")
-os.system("cp voiceover.mp3 test_audios/voiceover.mp3")
-
 print("Running EchoMimic inference...")
+# Use correct args from infer_acc.py usage: -W -H (single dash), no --output
 cmd = (
     f"FFMPEG_PATH={ffmpeg_path} python infer_acc.py "
     f"--refimg_name portrait.jpg "
     f"--audio_name voiceover.mp3 "
     f"--ref_images_dir test_imgs "
     f"--audio_dir test_audios "
-    f"--output output.mp4 "
-    f"--W 512 --H 512 "
+    f"-W 512 -H 512 "
     f"--fps 24 "
     f"--steps 20 "
     f"--device cuda"
 )
+print(f"Running: {cmd}")
 ret = os.system(cmd)
 print(f"EchoMimic exit code: {ret}")
 
-# Find output - EchoMimic may save to a different path
+# Find output - EchoMimic saves to ./output/ or similar
 output_file = None
 for root, dirs, files in os.walk("."):
     for f in files:
@@ -92,6 +91,11 @@ for root, dirs, files in os.walk("."):
         break
 
 if not output_file or not os.path.exists(output_file):
+    # List all files to help debug
+    print("Files in current dir:")
+    for root, dirs, files in os.walk("."):
+        for f in files:
+            print(os.path.join(root, f))
     patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
     raise RuntimeError("No output.mp4 found")
 
