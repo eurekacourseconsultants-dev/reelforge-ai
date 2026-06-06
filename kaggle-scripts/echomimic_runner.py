@@ -42,10 +42,13 @@ snapshot_download("BadToBest/EchoMimicV2", local_dir="pretrained_weights")
 print("Downloading sd-vae-ft-mse...")
 snapshot_download("stabilityai/sd-vae-ft-mse", local_dir="pretrained_weights/sd-vae-ft-mse")
 
+print("Downloading sd-image-variations-diffusers...")
+snapshot_download("lambdalabs/sd-image-variations-diffusers", local_dir="pretrained_weights/sd-image-variations-diffusers")
+
 print("Downloading whisper tiny model...")
 snapshot_download("openai/whisper-tiny", local_dir="pretrained_weights/whisper")
 
-# Download ffmpeg-static (required by EchoMimic)
+# Download ffmpeg-static
 print("Downloading ffmpeg-static...")
 os.system("wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz")
 os.system("tar -xf ffmpeg-release-amd64-static.tar.xz")
@@ -54,7 +57,6 @@ ffmpeg_path = os.path.abspath(ffmpeg_dir)
 os.environ["FFMPEG_PATH"] = ffmpeg_path
 print(f"FFMPEG_PATH={ffmpeg_path}")
 
-# Set up input dirs as EchoMimic expects
 os.makedirs("test_imgs", exist_ok=True)
 os.makedirs("test_audios", exist_ok=True)
 
@@ -84,7 +86,6 @@ print(f"Running: {cmd}")
 ret = os.system(cmd)
 print(f"EchoMimic exit code: {ret}")
 
-# Find output
 output_file = None
 for root, dirs, files in os.walk("."):
     for f in files:
@@ -96,11 +97,11 @@ for root, dirs, files in os.walk("."):
         break
 
 if not output_file or not os.path.exists(output_file):
-    print("Files in current dir:")
+    print("Files in working dir (excluding assets/pretrained/git):")
     for root, dirs, files in os.walk("."):
+        dirs[:] = [d for d in dirs if d not in ['.git', 'assets', 'pretrained_weights', 'ffmpeg-7.0.2-amd64-static', 'EMTD_dataset']]
         for f in files:
-            if not any(skip in root for skip in ['.git', 'ffmpeg-7', 'assets', 'pretrained']):
-                print(os.path.join(root, f))
+            print(os.path.join(root, f))
     patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
     raise RuntimeError("No output.mp4 found")
 

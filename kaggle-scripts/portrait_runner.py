@@ -5,11 +5,12 @@ import requests
 
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub"
+    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub", "Pillow"
 ], check=True)
 
 import torch
 import boto3
+from PIL import Image
 from diffusers import StableDiffusionPipeline
 
 JOB_ID = os.environ["JOB_ID"]
@@ -24,16 +25,14 @@ R2_PUBLIC_URL = os.environ["R2_PUBLIC_URL"]
 
 import json
 prefs = json.loads(PORTRAIT_PREFS) if PORTRAIT_PREFS else {}
-gender = prefs.get("gender", "person")
-age = prefs.get("age", "30s")
+gender = prefs.get("gender", "woman")
+age = prefs.get("age", "20s")
 style = prefs.get("style", "professional")
 
-# Short prompt - SD 1.5 CLIP max is 77 tokens
-full_prompt = f"portrait photo of a {age} {gender}, {style} attire, front facing, neutral background, soft lighting, upper body, photorealistic"
-negative_prompt = "sunglasses, cartoon, anime, blurry, side view, low quality"
+full_prompt = f"professional headshot photo of a {age} Asian {gender}, {style} attire, full head and face visible, centered in frame, forehead to upper chest, looking directly at camera, neutral grey background, soft studio lighting, photorealistic, sharp focus"
+negative_prompt = "cut off head, cropped forehead, sunglasses, hat, cartoon, anime, blurry, side view, low quality, deformed, bad anatomy, extra limbs, full body"
 
 print(f"Prompt: {full_prompt}")
-print("Running on CPU to avoid CUDA compatibility issues")
 
 def patch_supabase(data):
     requests.patch(
@@ -56,10 +55,11 @@ image = pipe(
     negative_prompt=negative_prompt,
     height=512,
     width=512,
-    num_inference_steps=20,
+    num_inference_steps=25,
     guidance_scale=7.5,
 ).images[0]
 
+image = image.resize((512, 512), Image.LANCZOS)
 image.save("portrait.jpg")
 print("Portrait saved.")
 
