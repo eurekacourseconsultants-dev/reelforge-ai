@@ -3,24 +3,10 @@ const fs = require('fs')
 const path = require('path')
 
 const JOB_ID = process.env.JOB_ID
-const PORTRAIT_PREFS = JSON.parse(process.env.PORTRAIT_PREFS || '{}')
-const GROQ_API_KEY = process.env.GROQ_API_KEY
+const PORTRAIT_PREFS = process.env.PORTRAIT_PREFS || '{}'
 const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
 
 async function run() {
-  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: `Generate a photorealistic portrait prompt for FLUX.1 image generation.\nGender: ${PORTRAIT_PREFS.gender || 'neutral'}\nAge range: ${PORTRAIT_PREFS.age || '30s'}\nStyle: ${PORTRAIT_PREFS.style || 'Professional'}\nRequirements: front-facing camera, clean neutral background, soft even lighting, upper body visible, no sunglasses, no accessories, 768x768, ultra-realistic.\nReturn only the prompt text, nothing else.` }],
-      max_tokens: 200,
-    })
-  })
-  const groqData = await groqRes.json()
-  const portraitPrompt = groqData.choices[0].message.content.trim()
-  console.log('Portrait prompt:', portraitPrompt)
-
   const account = KAGGLE_POOL[0]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
   fs.mkdirSync(kaggleDir, { recursive: true })
@@ -32,8 +18,7 @@ async function run() {
   const injected = [
     'import os',
     `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
-    `os.environ["PORTRAIT_PROMPT"] = ${JSON.stringify(portraitPrompt)}`,
-    `os.environ["HF_TOKEN"] = ${JSON.stringify(process.env.HF_TOKEN)}`,
+    `os.environ["PORTRAIT_PREFS"] = ${JSON.stringify(PORTRAIT_PREFS)}`,
     `os.environ["SUPABASE_URL"] = ${JSON.stringify(process.env.SUPABASE_URL)}`,
     `os.environ["SUPABASE_KEY"] = ${JSON.stringify(process.env.SUPABASE_KEY)}`,
     `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,
