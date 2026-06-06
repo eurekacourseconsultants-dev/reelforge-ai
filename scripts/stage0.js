@@ -5,6 +5,29 @@ const path = require('path')
 const JOB_ID = process.env.JOB_ID
 const PORTRAIT_PREFS = process.env.PORTRAIT_PREFS || '{}'
 const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_KEY = process.env.SUPABASE_KEY
+
+async function pollSupabaseForPortrait() {
+  console.log('Polling Supabase for portrait completion...')
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 30000))
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.spokesperson_photo_url`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      })
+      const data = await res.json()
+      if (data[0]?.value) {
+        console.log(`Portrait ready: ${data[0].value}`)
+        return
+      }
+      console.log(`Poll ${i + 1}/60: portrait not ready yet...`)
+    } catch (e) {
+      console.log(`Poll ${i + 1}/60: fetch error, retrying...`)
+    }
+  }
+  throw new Error('Portrait timed out after 30 minutes')
+}
 
 async function run() {
   const account = KAGGLE_POOL[0]
@@ -19,8 +42,8 @@ async function run() {
     'import os',
     `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
     `os.environ["PORTRAIT_PREFS"] = ${JSON.stringify(PORTRAIT_PREFS)}`,
-    `os.environ["SUPABASE_URL"] = ${JSON.stringify(process.env.SUPABASE_URL)}`,
-    `os.environ["SUPABASE_KEY"] = ${JSON.stringify(process.env.SUPABASE_KEY)}`,
+    `os.environ["SUPABASE_URL"] = ${JSON.stringify(SUPABASE_URL)}`,
+    `os.environ["SUPABASE_KEY"] = ${JSON.stringify(SUPABASE_KEY)}`,
     `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,
     `os.environ["R2_ACCESS_KEY_ID"] = ${JSON.stringify(process.env.R2_ACCESS_KEY_ID)}`,
     `os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}`,
@@ -48,28 +71,10 @@ async function run() {
 
   console.log('Pushing portrait kernel to Kaggle...')
   execSync('kaggle kernels push -p kaggle-push/portrait', { stdio: 'inherit' })
+  console.log('Kernel pushed. Waiting for portrait via Supabase...')
 
-  console.log('Polling Kaggle for portrait completion...')
-  const kernelRef = `${account.username}/reelforge-portrait`
-
-  for (let i = 0; i < 60; i++) {
-    await new Promise(r => setTimeout(r, 30000))
-    let result = null
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        result = execSync(`kaggle kernels status ${kernelRef}`, { stdio: 'pipe' }).toString()
-        break
-      } catch (e) {
-        console.log(`Status attempt ${attempt + 1} failed, retrying...`)
-        if (attempt < 4) await new Promise(r => setTimeout(r, 15000))
-      }
-    }
-    if (!result) { console.log('Poll cycle failed, continuing...'); continue }
-    console.log(`Status: ${result.trim()}`)
-    if (result.includes('complete')) { console.log('Portrait done.'); return }
-    if (result.includes('error') || result.includes('cancel')) throw new Error('Portrait kernel failed')
-  }
-  throw new Error('Portrait kernel timed out')
+  await pollSupabaseForPortrait()
+  console.log('Stage 0 complete.')
 }
 
 run().catch(e => { console.error(e); process.exit(1) })
