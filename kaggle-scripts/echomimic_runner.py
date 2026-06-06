@@ -1,6 +1,5 @@
 import os
 import requests
-import subprocess
 import sys
 
 os.system("apt-get install -y git ffmpeg")
@@ -36,8 +35,15 @@ os.chdir("echomimic_v2")
 os.system("pip install -q -r requirements.txt")
 
 from huggingface_hub import snapshot_download
+
 print("Downloading EchoMimic V2 weights...")
 snapshot_download("BadToBest/EchoMimicV2", local_dir="pretrained_weights")
+
+print("Downloading sd-vae-ft-mse...")
+snapshot_download("stabilityai/sd-vae-ft-mse", local_dir="pretrained_weights/sd-vae-ft-mse")
+
+print("Downloading whisper tiny model...")
+snapshot_download("openai/whisper-tiny", local_dir="pretrained_weights/whisper")
 
 # Download ffmpeg-static (required by EchoMimic)
 print("Downloading ffmpeg-static...")
@@ -63,7 +69,6 @@ with open("test_audios/voiceover.mp3", "wb") as f:
     f.write(r.content)
 
 print("Running EchoMimic inference...")
-# Use correct args from infer_acc.py usage: -W -H (single dash), no --output
 cmd = (
     f"FFMPEG_PATH={ffmpeg_path} python infer_acc.py "
     f"--refimg_name portrait.jpg "
@@ -79,7 +84,7 @@ print(f"Running: {cmd}")
 ret = os.system(cmd)
 print(f"EchoMimic exit code: {ret}")
 
-# Find output - EchoMimic saves to ./output/ or similar
+# Find output
 output_file = None
 for root, dirs, files in os.walk("."):
     for f in files:
@@ -91,11 +96,11 @@ for root, dirs, files in os.walk("."):
         break
 
 if not output_file or not os.path.exists(output_file):
-    # List all files to help debug
     print("Files in current dir:")
     for root, dirs, files in os.walk("."):
         for f in files:
-            print(os.path.join(root, f))
+            if not any(skip in root for skip in ['.git', 'ffmpeg-7', 'assets', 'pretrained']):
+                print(os.path.join(root, f))
     patch_supabase({"status": "failed", "error": "EchoMimic produced no output"})
     raise RuntimeError("No output.mp4 found")
 
