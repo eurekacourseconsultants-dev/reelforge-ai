@@ -145,7 +145,7 @@ cmd = (
     f"--audio_dir test_audios "
     f"-W 768 -H 768 "
     f"--fps 24 "
-    f"--steps 20 "
+    f"--steps 10 "
     f"--device cuda"
 )
 print(f"Running: {cmd}")
