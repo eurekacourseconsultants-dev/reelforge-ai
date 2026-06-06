@@ -62,18 +62,47 @@ print(f"wget exit code: {ret}")
 print(f"tiny.pt in cache: {os.path.exists(f'{whisper_cache}/tiny.pt')}")
 print(f"tiny.pt size: {os.path.getsize(f'{whisper_cache}/tiny.pt') if os.path.exists(f'{whisper_cache}/tiny.pt') else 'MISSING'}")
 
-# Patch infer_acc.yaml to use model name "tiny" instead of a file path
+# Patch infer_acc.yaml:
+# 1. Use model name "tiny" instead of file path
+# 2. Replace audio list with just our voiceover
+# 3. Replace reference image list with just our portrait
+# 4. Replace pose list with just one pose sequence
 config_path = "configs/prompts/infer_acc.yaml"
+import re
 if os.path.exists(config_path):
     with open(config_path, "r") as f:
         config_text = f.read()
-    print(f"Original audio_model_path line: {[l for l in config_text.splitlines() if 'audio_model_path' in l]}")
-    # Replace any audio_model_path value with just "tiny"
-    import re
+
+    # Fix whisper model name
     config_text = re.sub(r'(audio_model_path\s*:\s*).*', r'\1tiny', config_text)
+
+    # Replace entire audio_list with just our file
+    config_text = re.sub(
+        r'audio_list\s*:.*?(?=\n\w|\Z)',
+        'audio_list:\n    - "./test_audios/voiceover.mp3"',
+        config_text, flags=re.DOTALL
+    )
+
+    # Replace entire refimg_list with just our portrait
+    config_text = re.sub(
+        r'refimg_list\s*:.*?(?=\n\w|\Z)',
+        'refimg_list:\n    - "./test_imgs/portrait.jpg"',
+        config_text, flags=re.DOTALL
+    )
+
+    # Replace entire pose_list with just one pose sequence
+    config_text = re.sub(
+        r'pose_list\s*:.*?(?=\n\w|\Z)',
+        'pose_list:\n    - "./assets/halfbody_demo/pose/01/"',
+        config_text, flags=re.DOTALL
+    )
+
     with open(config_path, "w") as f:
         f.write(config_text)
-    print(f"Patched audio_model_path to: {[l for l in config_text.splitlines() if 'audio_model_path' in l]}")
+    print("Patched infer_acc.yaml — audio, refimg, pose lists reduced to 1 each")
+    print(f"audio_model_path: {[l for l in config_text.splitlines() if 'audio_model_path' in l]}")
+    print(f"audio_list: {[l for l in config_text.splitlines() if 'voiceover' in l]}")
+    print(f"refimg_list: {[l for l in config_text.splitlines() if 'portrait' in l]}")
 else:
     print(f"WARNING: {config_path} not found — listing configs/prompts/:")
     os.system("ls -la configs/prompts/ 2>/dev/null || echo 'No configs/prompts dir'")
@@ -132,9 +161,9 @@ cmd = (
     f"--audio_name voiceover.mp3 "
     f"--ref_images_dir test_imgs "
     f"--audio_dir test_audios "
-    f"-W 768 -H 768 "
+    f"-W 512 -H 512 "
     f"--fps 24 "
-    f"--steps 20 "
+    f"--steps 10 "
     f"--device cuda"
 )
 print(f"Running: {cmd}")

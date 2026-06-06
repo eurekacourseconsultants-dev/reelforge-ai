@@ -10,7 +10,7 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY
 async function pollSupabaseForStatus(targetStatus) {
   console.log(`Polling Supabase for status: ${targetStatus}...`)
   for (let i = 0; i < 60; i++) {
-    await new Promise(r => setTimeout(r, 60000))
+    await new Promise(r => setTimeout(r, 120000))
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/jobs?id=eq.${JOB_ID}&select=status,error`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
