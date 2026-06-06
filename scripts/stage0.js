@@ -37,7 +37,24 @@ Return only the prompt text, nothing else.`
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
 
   fs.mkdirSync('kaggle-push/portrait', { recursive: true })
-  fs.copyFileSync('kaggle-scripts/portrait_runner.py', 'kaggle-push/portrait/portrait_runner.py')
+
+  // Inject env vars directly into the script
+  const baseScript = fs.readFileSync('kaggle-scripts/portrait_runner.py', 'utf8')
+  const injected = `import os
+os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}
+os.environ["PORTRAIT_PROMPT"] = ${JSON.stringify(portraitPrompt)}
+os.environ["SUPABASE_URL"] = ${JSON.stringify(process.env.SUPABASE_URL)}
+os.environ["SUPABASE_KEY"] = ${JSON.stringify(process.env.SUPABASE_KEY)}
+os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}
+os.environ["R2_ACCESS_KEY_ID"] = ${JSON.stringify(process.env.R2_ACCESS_KEY_ID)}
+os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}
+os.environ["R2_BUCKET_NAME"] = ${JSON.stringify(process.env.R2_BUCKET_NAME)}
+os.environ["R2_PUBLIC_URL"] = ${JSON.stringify(process.env.R2_PUBLIC_URL)}
+
+${baseScript}`
+
+  fs.writeFileSync('kaggle-push/portrait/portrait_runner.py', injected)
+
   fs.writeFileSync('kaggle-push/portrait/kernel-metadata.json', JSON.stringify({
     id: `${account.username}/reelforge-portrait`,
     title: 'reelforge-portrait',
@@ -51,17 +68,6 @@ Return only the prompt text, nothing else.`
     competition_sources: [],
     kernel_sources: [],
     model_sources: [],
-    environment_variables: {
-      JOB_ID,
-      PORTRAIT_PROMPT: portraitPrompt,
-      SUPABASE_URL: process.env.SUPABASE_URL,
-      SUPABASE_KEY: process.env.SUPABASE_KEY,
-      R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
-      R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
-      R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
-      R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
-      R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
-    }
   }))
 
   console.log('Pushing portrait kernel to Kaggle...')
@@ -73,7 +79,6 @@ Return only the prompt text, nothing else.`
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 30000))
 
-    // Retry status check up to 5 times on 500 errors
     let result = null
     for (let attempt = 0; attempt < 5; attempt++) {
       try {

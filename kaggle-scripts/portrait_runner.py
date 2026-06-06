@@ -1,9 +1,19 @@
 import os
 import sys
+import subprocess
 import requests
 
-# Install dependencies
-os.system("pip install -q diffusers transformers accelerate boto3 huggingface_hub")
+# Install compatible PyTorch for P100 (CUDA 11.8, sm_60)
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "torch==2.1.2", "torchvision==0.16.2",
+    "--index-url", "https://download.pytorch.org/whl/cu118"
+], check=True)
+
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "diffusers", "transformers", "accelerate", "boto3", "huggingface_hub"
+], check=True)
 
 import torch
 import boto3
@@ -35,21 +45,12 @@ print("Downloading FLUX.1-schnell weights...")
 snapshot_download("black-forest-labs/FLUX.1-schnell")
 
 print("Loading pipeline...")
-try:
-    pipe = FluxPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-schnell",
-        torch_dtype=torch.float8_e4m3fn,
-    )
-    pipe.enable_model_cpu_offload()
-    pipe.enable_vae_tiling()
-except Exception as e:
-    print(f"FP8 failed ({e}), falling back to float16...")
-    pipe = FluxPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-schnell",
-        torch_dtype=torch.float16,
-    )
-    pipe.enable_model_cpu_offload()
-    pipe.enable_vae_tiling()
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.float16,
+)
+pipe.enable_model_cpu_offload()
+pipe.enable_vae_tiling()
 
 print("Generating portrait...")
 image = pipe(
