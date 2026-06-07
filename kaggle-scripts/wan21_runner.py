@@ -71,6 +71,10 @@ if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
 # Download model weights
 # NOTE: Wan2.1-I2V-1.3B does not exist. Only I2V-14B exists (~15GB, exceeds Kaggle disk).
 # All modes use T2V-1.3B for testing. Avatar appearance is driven by scene prompts.
+import subprocess as sp
+print("Cloning Wan2.1 inference code...")
+sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "."], check=True)
+
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
 ckpt_dir = "./Wan2.1-T2V-1.3B"
