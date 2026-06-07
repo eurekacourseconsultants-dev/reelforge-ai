@@ -4,8 +4,16 @@ import subprocess
 import requests
 import json
 
-# diffusers 0.31.0 requires transformers <= 4.44.x (FLAX_WEIGHTS_NAME removed in 4.45+)
-print("Installing dependencies...")
+# Kaggle has torch 2.10+cu128 which dropped sm_60 (P100).
+# torch cu126 builds still include Pascal/sm_60 support per PyTorch release notes.
+# Must reinstall with cu126 and pin transformers for diffusers compatibility.
+print("Installing PyTorch cu126 (sm_60 support) + compatible deps...")
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
+    "torch==2.6.0+cu126", "torchvision==0.21.0+cu126",
+    "--index-url", "https://download.pytorch.org/whl/cu126",
+], check=True)
+
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "diffusers==0.31.0",
@@ -26,6 +34,8 @@ print(f"PyTorch: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
+    cap = torch.cuda.get_device_capability(0)
+    print(f"CUDA capability: sm_{cap[0]}{cap[1]}")
 
 AVATAR_ID            = os.environ["AVATAR_ID"]
 AVATAR_NAME          = os.environ.get("AVATAR_NAME", "Avatar")
