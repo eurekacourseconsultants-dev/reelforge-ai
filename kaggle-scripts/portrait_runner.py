@@ -4,19 +4,16 @@ import subprocess
 import requests
 import json
 
-# Kaggle Python 3.12, GPU P100 (sm_60). torch 2.2.0+cu118 is the lowest available
-# on the index for cp312. sm_60 PTX JIT fallback handles the arch gap at runtime.
-print("Installing PyTorch 2.2.0+cu118...")
-subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
-    "torch==2.2.0+cu118", "torchvision==0.17.0+cu118",
-    "--index-url", "https://download.pytorch.org/whl/cu118",
-], check=True)
-
+# Use Kaggle's pre-installed torch — don't reinstall it.
+# Only install the packages we actually need that aren't already there.
+print("Installing dependencies...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "diffusers==0.27.2", "transformers", "accelerate", "boto3",
-    "huggingface_hub", "Pillow", "opencv-python-headless"
+    "diffusers==0.31.0",
+    "accelerate",
+    "boto3",
+    "Pillow",
+    "opencv-python-headless",
 ], check=True)
 
 import torch
@@ -25,8 +22,10 @@ import cv2
 from PIL import Image
 from diffusers import StableDiffusionPipeline, AutoencoderKL
 
-# PTX JIT fallback for sm_60
-os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "6.0")
+print(f"PyTorch: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 AVATAR_ID            = os.environ["AVATAR_ID"]
 AVATAR_NAME          = os.environ.get("AVATAR_NAME", "Avatar")
@@ -56,6 +55,7 @@ ethnicity_map = {
 }
 eth_desc    = ethnicity_map.get(ethnicity, "")
 person_desc = f"{age} year old {eth_desc} {gender}".strip()
+print(f"Generating: {person_desc}")
 
 def patch_avatar(data):
     requests.patch(
@@ -95,11 +95,6 @@ negative_prompt = (
     "blazer, suit, hands, arms, dynamic pose, painting, illustration"
 )
 
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"PyTorch: {torch.__version__}")
-if torch.cuda.is_available():
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-
 print("Loading VAE...")
 vae = AutoencoderKL.from_pretrained(
     "stabilityai/sd-vae-ft-mse",
@@ -114,7 +109,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     safety_checker=None,
 )
 pipe = pipe.to("cuda")
-print(f"Pipeline on GPU. Generating: {person_desc}")
+print("Pipeline ready.")
 
 image = None
 last_result = None
