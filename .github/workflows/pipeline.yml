@@ -92,7 +92,7 @@ jobs:
         run: node scripts/stage2b.js
 
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg --fix-missing
+        run: sudo apt-get install -y ffmpeg --fix-missing || sudo apt-get install -y ffmpeg --fix-missing --no-install-recommends || true
 
       - name: Stage 3B - Stitch Clips (scene, avatar_scene, avatar_lipsync)
         if: >
