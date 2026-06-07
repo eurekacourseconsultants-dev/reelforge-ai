@@ -4,13 +4,13 @@ import subprocess
 import requests
 import json
 
-# P100 is CUDA sm_60 (Pascal). PyTorch dropped sm_60 support after 2.0.x.
-# The cu118 pip index no longer lists 2.0.1 but the wheel still exists at a direct URL.
-print("Installing PyTorch 2.0.1+cu118 for P100 (sm_60) compatibility...")
+# Kaggle Python 3.12, GPU P100 (sm_60). torch 2.2.0+cu118 is the lowest available
+# on the index for cp312. sm_60 PTX JIT fallback handles the arch gap at runtime.
+print("Installing PyTorch 2.2.0+cu118...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
-    "https://download.pytorch.org/whl/cu118/torch-2.0.1%2Bcu118-cp310-cp310-linux_x86_64.whl",
-    "https://download.pytorch.org/whl/cu118/torchvision-0.15.2%2Bcu118-cp310-cp310-linux_x86_64.whl",
+    "torch==2.2.0+cu118", "torchvision==0.17.0+cu118",
+    "--index-url", "https://download.pytorch.org/whl/cu118",
 ], check=True)
 
 subprocess.run([
@@ -24,6 +24,9 @@ import boto3
 import cv2
 from PIL import Image
 from diffusers import StableDiffusionPipeline, AutoencoderKL
+
+# PTX JIT fallback for sm_60
+os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "6.0")
 
 AVATAR_ID            = os.environ["AVATAR_ID"]
 AVATAR_NAME          = os.environ.get("AVATAR_NAME", "Avatar")
@@ -42,7 +45,6 @@ age       = prefs.get("age", "25")
 style     = prefs.get("style", "professional")
 ethnicity = prefs.get("ethnicity", "")
 
-# Build ethnicity descriptor for prompt
 ethnicity_map = {
     "Asian":           "east asian",
     "South Asian":     "south asian",
@@ -52,7 +54,7 @@ ethnicity_map = {
     "White":           "caucasian white",
     "Southeast Asian": "southeast asian",
 }
-eth_desc = ethnicity_map.get(ethnicity, "")
+eth_desc    = ethnicity_map.get(ethnicity, "")
 person_desc = f"{age} year old {eth_desc} {gender}".strip()
 
 def patch_avatar(data):
@@ -93,13 +95,18 @@ negative_prompt = (
     "blazer, suit, hands, arms, dynamic pose, painting, illustration"
 )
 
-print("Loading VAE: stabilityai/sd-vae-ft-mse...")
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"PyTorch: {torch.__version__}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+
+print("Loading VAE...")
 vae = AutoencoderKL.from_pretrained(
     "stabilityai/sd-vae-ft-mse",
     torch_dtype=torch.float16,
 )
 
-print("Loading Realistic Vision V5.1 pipeline on GPU...")
+print("Loading Realistic Vision V5.1...")
 pipe = StableDiffusionPipeline.from_pretrained(
     "SG161222/Realistic_Vision_V5.1_noVAE",
     vae=vae,
@@ -107,7 +114,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     safety_checker=None,
 )
 pipe = pipe.to("cuda")
-print(f"Pipeline loaded on GPU. Generating: {person_desc}")
+print(f"Pipeline on GPU. Generating: {person_desc}")
 
 image = None
 last_result = None
@@ -135,10 +142,9 @@ if image is None:
 
 image = image.resize((512, 512), Image.LANCZOS)
 image.save("portrait.jpg")
-
 thumb = image.resize((256, 256), Image.LANCZOS)
 thumb.save("portrait_thumb.jpg")
-print("Portrait and thumbnail saved.")
+print("Portrait saved.")
 
 print("Uploading to R2...")
 s3 = boto3.client(
@@ -150,18 +156,12 @@ s3 = boto3.client(
 
 r2_key       = f"avatars/{AVATAR_ID}.jpg"
 r2_thumb_key = f"avatars/{AVATAR_ID}_thumb.jpg"
-
 s3.upload_file("portrait.jpg",       R2_BUCKET_NAME, r2_key,       ExtraArgs={"ContentType": "image/jpeg"})
 s3.upload_file("portrait_thumb.jpg", R2_BUCKET_NAME, r2_thumb_key, ExtraArgs={"ContentType": "image/jpeg"})
 
 photo_url     = f"{R2_PUBLIC_URL}/{r2_key}"
 thumbnail_url = f"{R2_PUBLIC_URL}/{r2_thumb_key}"
 print(f"Uploaded: {photo_url}")
-print(f"Thumbnail: {thumbnail_url}")
 
-patch_avatar({
-    "photo_url":     photo_url,
-    "thumbnail_url": thumbnail_url,
-    "status":        "ready",
-})
+patch_avatar({"photo_url": photo_url, "thumbnail_url": thumbnail_url, "status": "ready"})
 print("Done.")
