@@ -4,14 +4,13 @@ import subprocess
 import requests
 import json
 
-# P100 is CUDA sm_60 (Pascal). Kaggle's default PyTorch only supports sm_70+.
-# Must install PyTorch 2.0.1 with CUDA 11.8 which still supports sm_60.
-print("Installing PyTorch 2.0.1 for P100 (sm_60) compatibility...")
+# P100 is CUDA sm_60 (Pascal). PyTorch dropped sm_60 support after 2.0.x.
+# The cu118 pip index no longer lists 2.0.1 but the wheel still exists at a direct URL.
+print("Installing PyTorch 2.0.1+cu118 for P100 (sm_60) compatibility...")
 subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q",
-    "torch==2.0.1", "torchvision==0.15.2", "torchaudio==2.0.2",
-    "--index-url", "https://download.pytorch.org/whl/cu118",
-    "--force-reinstall"
+    sys.executable, "-m", "pip", "install", "-q", "--force-reinstall",
+    "https://download.pytorch.org/whl/cu118/torch-2.0.1%2Bcu118-cp310-cp310-linux_x86_64.whl",
+    "https://download.pytorch.org/whl/cu118/torchvision-0.15.2%2Bcu118-cp310-cp310-linux_x86_64.whl",
 ], check=True)
 
 subprocess.run([
