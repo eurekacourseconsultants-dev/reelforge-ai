@@ -75,6 +75,7 @@ async function run() {
     kernel_type: 'script',
     is_private: true,
     enable_gpu: true,
+    accelerator: "NvidiaTeslaT4",
     enable_internet: true,
     dataset_sources: [],
     competition_sources: [],

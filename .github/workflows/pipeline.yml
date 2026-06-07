@@ -92,7 +92,17 @@ jobs:
         run: node scripts/stage2b.js
 
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg --fix-missing || sudo apt-get install -y ffmpeg --fix-missing --no-install-recommends || true
+        run: |
+          sudo apt-get install -y ffmpeg --fix-missing || true
+          sudo apt --fix-broken install -y || true
+          which ffmpeg && ffmpeg -version || (
+            echo "apt ffmpeg broken, falling back to static binary..." &&
+            wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz &&
+            tar -xf ffmpeg-release-amd64-static.tar.xz &&
+            sudo mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ &&
+            sudo mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ &&
+            echo "Static ffmpeg installed:" && ffmpeg -version
+          )
 
       - name: Stage 3B - Stitch Clips (scene, avatar_scene, avatar_lipsync)
         if: >
@@ -124,7 +134,6 @@ jobs:
           R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3a.js
-
 
       - name: Stage 4 - Final Encode
         env:
