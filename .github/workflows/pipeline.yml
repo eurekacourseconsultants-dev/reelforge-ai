@@ -91,6 +91,9 @@ jobs:
           HF_TOKEN:             ${{ secrets.HF_TOKEN }}
         run: node scripts/stage2b.js
 
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg --fix-missing
+
       - name: Stage 3B - Stitch Clips (scene, avatar_scene, avatar_lipsync)
         if: >
           steps.classify.outputs.pipeline_mode == 'scene' ||
@@ -122,8 +125,6 @@ jobs:
           R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3a.js
 
-      - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg --fix-missing
 
       - name: Stage 4 - Final Encode
         env:
