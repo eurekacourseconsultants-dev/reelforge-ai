@@ -58,11 +58,6 @@ def patch_supabase(data):
         json=data,
     )
 
-# Portrait download removed — T2V-1.3B only, no I2V available at this model size
-
-# Download model weights
-# NOTE: Wan2.1-I2V-1.3B does not exist. Only I2V-14B exists (~15GB, exceeds Kaggle disk).
-# All modes use T2V-1.3B for testing. Avatar appearance is driven by scene prompts.
 import subprocess as sp
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
@@ -73,7 +68,6 @@ sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"],
 sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "flash_attn", "flash_attn_interface"], check=False)
 
 # Patch attention.py to use torch SDPA fallback instead of asserting flash_attn is available.
-# The cloned repo's attention.py has a hard assert FLASH_ATTN_2_AVAILABLE with no fallback.
 attention_patch = """
 import torch
 import warnings
@@ -126,9 +120,34 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
+def extract_last_frame(video_path, frame_path):
+    """Extract the last frame of a video as a jpg for use as first_frame of the next clip."""
+    ret = os.system(
+        f'ffmpeg -sseof -0.1 -i {video_path} -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
+    )
+    if ret != 0 or not os.path.exists(frame_path):
+        # fallback: grab frame at 0.5s
+        os.system(
+            f'ffmpeg -i {video_path} -ss 00:00:00.500 -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
+        )
+    exists = os.path.exists(frame_path)
+    print(f"Last frame extracted: {frame_path} exists={exists}")
+    return exists
+
+prev_last_frame = None  # path to last frame of previous clip, None for first clip
+
 for i, scene in enumerate(scenes):
-    print(f"Generating clip {i+1}/6 [{WAN21_MODE}]: {scene[:60]}...")
+    print(f"Generating clip {i+1}/{len(scenes)} [{WAN21_MODE}]: {scene[:80]}...")
     output_file = f"clip_{i}.mp4"
+    last_frame_file = f"last_frame_{i}.jpg"
+
+    # Build first_frame flag — chain from previous clip's last frame for continuity
+    first_frame_flag = ""
+    if prev_last_frame and os.path.exists(prev_last_frame):
+        first_frame_flag = f'--first_frame {prev_last_frame} '
+        print(f"Chaining from previous clip last frame: {prev_last_frame}")
+    else:
+        print(f"Clip {i+1}: no previous frame to chain from, cold start")
 
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
@@ -138,6 +157,7 @@ for i, scene in enumerate(scenes):
         f'--frame_num 16 '
         f'--ckpt_dir {ckpt_dir} '
         f'--prompt "{scene}" '
+        f'{first_frame_flag}'
         f'--offload_model True '
         f'--t5_cpu '
         f'--save_file {output_file}'
@@ -150,6 +170,13 @@ for i, scene in enumerate(scenes):
     if not os.path.exists(output_file):
         patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed"})
         raise RuntimeError(f"{output_file} not found")
+
+    # Extract last frame for next clip to chain from
+    if extract_last_frame(output_file, last_frame_file):
+        prev_last_frame = last_frame_file
+    else:
+        print(f"WARNING: could not extract last frame from clip {i+1}, next clip will cold start")
+        prev_last_frame = None
 
     r2_key = f"clips/{JOB_ID}/clip_{i}.mp4"
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
