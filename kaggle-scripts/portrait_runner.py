@@ -4,12 +4,12 @@ import subprocess
 import requests
 import json
 
-# Use Kaggle's pre-installed torch — don't reinstall it.
-# Only install the packages we actually need that aren't already there.
+# diffusers 0.31.0 requires transformers <= 4.44.x (FLAX_WEIGHTS_NAME removed in 4.45+)
 print("Installing dependencies...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "diffusers==0.31.0",
+    "transformers==4.44.2",
     "accelerate",
     "boto3",
     "Pillow",
