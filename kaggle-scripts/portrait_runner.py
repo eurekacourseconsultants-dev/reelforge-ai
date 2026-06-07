@@ -37,10 +37,24 @@ R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
 R2_BUCKET_NAME       = os.environ["R2_BUCKET_NAME"]
 R2_PUBLIC_URL        = os.environ["R2_PUBLIC_URL"]
 
-prefs  = json.loads(PORTRAIT_PREFS) if PORTRAIT_PREFS else {}
-gender = prefs.get("gender", "woman")
-age    = prefs.get("age", "20s")
-style  = prefs.get("style", "professional")
+prefs     = json.loads(PORTRAIT_PREFS) if PORTRAIT_PREFS else {}
+gender    = prefs.get("gender", "woman")
+age       = prefs.get("age", "25")
+style     = prefs.get("style", "professional")
+ethnicity = prefs.get("ethnicity", "")
+
+# Build ethnicity descriptor for prompt
+ethnicity_map = {
+    "Asian":           "east asian",
+    "South Asian":     "south asian",
+    "Black":           "black",
+    "Hispanic":        "hispanic latino",
+    "Middle Eastern":  "middle eastern",
+    "White":           "caucasian white",
+    "Southeast Asian": "southeast asian",
+}
+eth_desc = ethnicity_map.get(ethnicity, "")
+person_desc = f"{age} year old {eth_desc} {gender}".strip()
 
 def patch_avatar(data):
     requests.patch(
@@ -68,10 +82,10 @@ def is_frontal(image_path, threshold=0.20):
     return offset < threshold
 
 prompts = [
-    f"RAW photo, passport photo of a {age} asian {gender}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic, 8k uhd, sharp focus, color photo",
-    f"RAW photo, id card photo of a {age} asian {gender}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic, high quality skin, color photo, natural skin tones",
-    f"RAW photo, professional headshot of a {age} asian {gender}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic, color photo, natural skin tones",
-    f"RAW photo, mugshot style portrait of a {age} asian {gender}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic, color photo, natural skin tones",
+    f"RAW photo, passport photo of a {person_desc}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic, 8k uhd, sharp focus, color photo",
+    f"RAW photo, id card photo of a {person_desc}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic, high quality skin, color photo, natural skin tones",
+    f"RAW photo, professional headshot of a {person_desc}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic, color photo, natural skin tones",
+    f"RAW photo, mugshot style portrait of a {person_desc}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic, color photo, natural skin tones",
 ]
 negative_prompt = (
     "monochrome, grayscale, black and white, sepia, side view, profile, "
@@ -94,7 +108,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     safety_checker=None,
 )
 pipe = pipe.to("cuda")
-print("Pipeline loaded on GPU.")
+print(f"Pipeline loaded on GPU. Generating: {person_desc}")
 
 image = None
 last_result = None
@@ -123,7 +137,6 @@ if image is None:
 image = image.resize((512, 512), Image.LANCZOS)
 image.save("portrait.jpg")
 
-# Save thumbnail (256x256)
 thumb = image.resize((256, 256), Image.LANCZOS)
 thumb.save("portrait_thumb.jpg")
 print("Portrait and thumbnail saved.")

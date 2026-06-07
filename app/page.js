@@ -24,7 +24,7 @@ const S = {
   badge: { display: 'inline-block', background: C.accentDim, color: C.accent, border: `1px solid ${C.accent}44`, borderRadius: '20px', padding: '4px 14px', fontSize: '13px', fontWeight: '600', margin: '16px 0 4px' },
   estimate: { color: C.muted, fontSize: '12px', marginBottom: '16px' },
   modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' },
-  modalBox: { background: '#111', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '28px', maxWidth: '420px', width: '100%' },
+  modalBox: { background: '#111', border: `1px solid ${C.border}`, borderRadius: '14px', padding: '28px', maxWidth: '420px', width: '100%', maxHeight: '90vh', overflowY: 'auto' },
   modalTitle: { color: C.accent, fontSize: '20px', fontWeight: '700', marginTop: 0, marginBottom: '6px' },
   optionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 18px' },
   input: { width: '100%', background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', fontSize: '14px', boxSizing: 'border-box', outline: 'none', marginBottom: '16px' },
@@ -52,6 +52,7 @@ const S = {
   video: { width: '100%', borderRadius: '10px', marginTop: '20px' },
   downloadLink: { display: 'block', textAlign: 'center', marginTop: '10px', color: C.accent, textDecoration: 'none', fontWeight: '700', fontSize: '14px' },
   divider: { border: 'none', borderTop: `1px solid ${C.border}`, margin: '24px 0' },
+  fieldLabel: { fontWeight: '600', marginBottom: '6px', fontSize: '14px', color: C.text },
 }
 
 function optionBtn(selected) {
@@ -86,22 +87,19 @@ function getStates(mode, status) {
 export default function Home() {
   const [prompt, setPrompt]       = useState('')
   const [avatars, setAvatars]     = useState([])
-  const [selectedId, setSelected] = useState(null) // null = no avatar
+  const [selectedId, setSelected] = useState(null)
   const [jobId, setJobId]         = useState(null)
   const [jobStatus, setJobStatus] = useState(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
 
-  // Portrait generation modal state
   const [showGenModal, setShowGenModal] = useState(false)
-  const [genPrefs, setGenPrefs]         = useState({ name: '', gender: '', age: '', style: '' })
+  const [genPrefs, setGenPrefs]         = useState({ name: '', gender: '', age: '', ethnicity: '', style: '' })
   const [generating, setGenerating]     = useState(false)
-  const [genStatus, setGenStatus]       = useState(null) // 'pending' | 'ready' | 'failed'
+  const [genStatus, setGenStatus]       = useState(null)
   const [genAvatarId, setGenAvatarId]   = useState(null)
 
-  useEffect(() => {
-    fetchAvatars()
-  }, [])
+  useEffect(() => { fetchAvatars() }, [])
 
   async function fetchAvatars() {
     const res  = await fetch('/api/avatars')
@@ -145,7 +143,6 @@ export default function Home() {
     if (!prompt.trim()) return
     setLoading(true)
     setError(null)
-
     const res = await fetch('/api/start-job', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -158,21 +155,23 @@ export default function Home() {
   }
 
   async function handleGeneratePortrait() {
-    const { name, gender, age, style } = genPrefs
+    const { name, gender, age, ethnicity, style } = genPrefs
     if (!gender || !age || !style) return
     setGenerating(true)
     setGenStatus('pending')
-
     const res  = await fetch('/api/generate-portrait', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name || 'Avatar', gender, age, style }),
+      body: JSON.stringify({ name: name || 'Avatar', gender, age, ethnicity, style }),
     })
     const data = await res.json()
     if (data.error) { setGenerating(false); setGenStatus('failed'); return }
     setGenAvatarId(data.avatar_id)
     pollAvatar(data.avatar_id)
   }
+
+  const ageValid = genPrefs.age.trim() !== '' && !isNaN(Number(genPrefs.age)) && Number(genPrefs.age) > 0 && Number(genPrefs.age) < 120
+  const canGenerate = !generating && genPrefs.gender && ageValid && genPrefs.style
 
   const mode   = jobStatus?.pipeline_mode
   const steps  = STEPS[mode] || []
@@ -185,17 +184,14 @@ export default function Home() {
 
       {!jobId && (
         <>
-          {/* Avatar selector */}
           <div style={S.section}>
             <div style={S.label}>Avatar (optional)</div>
             <div style={S.avatarGrid}>
-              {/* No avatar option */}
               <div style={S.noAvatar(selectedId === null)} onClick={() => setSelected(null)}>
                 <span>🎬</span>
                 <span style={{ fontSize: '10px', color: C.muted, marginTop: '4px' }}>None</span>
               </div>
 
-              {/* Loaded avatars */}
               {avatars.map(av => (
                 <div key={av.id} style={S.avatarCard(selectedId === av.id)} onClick={() => setSelected(av.id)}>
                   <img src={av.thumbnail_url} alt={av.name} style={S.avatarImg} />
@@ -203,7 +199,6 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* Generate new */}
               <div
                 style={{ ...S.avatarCard(false), display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', cursor: 'pointer' }}
                 onClick={() => { setShowGenModal(true); setGenStatus(null) }}
@@ -213,21 +208,12 @@ export default function Home() {
               </div>
             </div>
 
-            {selectedId && (
-              <div style={{ fontSize: '12px', color: C.accent }}>
-                ✓ Avatar selected — pipeline will use this character
-              </div>
-            )}
-            {selectedId === null && (
-              <div style={{ fontSize: '12px', color: C.muted }}>
-                No avatar — Wan2.1 generates its own characters
-              </div>
-            )}
+            {selectedId && <div style={{ fontSize: '12px', color: C.accent }}>✓ Avatar selected — pipeline will use this character</div>}
+            {selectedId === null && <div style={{ fontSize: '12px', color: C.muted }}>No avatar — Wan2.1 generates its own characters</div>}
           </div>
 
           <hr style={S.divider} />
 
-          {/* Prompt */}
           <div style={S.section}>
             <div style={S.label}>Describe your video</div>
             <textarea
@@ -243,7 +229,6 @@ export default function Home() {
         </>
       )}
 
-      {/* Progress */}
       {jobStatus?.pipeline_mode && (
         <div style={S.section}>
           <div style={S.badge}>
@@ -259,7 +244,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Complete */}
       {jobStatus?.status === 'complete' && (
         <>
           <video style={S.video} src={jobStatus.final_url} controls playsInline />
@@ -267,7 +251,6 @@ export default function Home() {
         </>
       )}
 
-      {/* Failed */}
       {jobStatus?.status === 'failed' && (
         <div style={S.errorBox}>
           {jobStatus.error || 'Something went wrong.'}
@@ -279,7 +262,6 @@ export default function Home() {
 
       {error && <div style={S.errorBox}>{error}</div>}
 
-      {/* Generate portrait modal */}
       {showGenModal && (
         <div style={S.modal}>
           <div style={S.modalBox}>
@@ -288,28 +270,40 @@ export default function Home() {
               Takes ~10–15 min on Kaggle GPU. You can close this and it will appear in the gallery when ready.
             </p>
 
+            <div style={S.fieldLabel}>Name</div>
             <input
               style={S.input}
-              placeholder="Avatar name (e.g. Sarah)"
+              placeholder="e.g. Sarah"
               value={genPrefs.name}
               onChange={e => setGenPrefs(p => ({ ...p, name: e.target.value }))}
             />
 
-            <div style={{ fontWeight: '600', marginBottom: '6px', fontSize: '14px' }}>Gender</div>
+            <div style={S.fieldLabel}>Gender</div>
             <div style={S.optionRow}>
               {['Female', 'Male', 'Neutral'].map(g => (
                 <button key={g} style={optionBtn(genPrefs.gender === g)} onClick={() => setGenPrefs(p => ({ ...p, gender: g }))}>{g}</button>
               ))}
             </div>
 
-            <div style={{ fontWeight: '600', marginBottom: '6px', fontSize: '14px' }}>Age</div>
+            <div style={S.fieldLabel}>Age</div>
+            <input
+              style={{ ...S.input, width: '120px' }}
+              placeholder="e.g. 28"
+              type="number"
+              min="1"
+              max="119"
+              value={genPrefs.age}
+              onChange={e => setGenPrefs(p => ({ ...p, age: e.target.value }))}
+            />
+
+            <div style={S.fieldLabel}>Ethnicity <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
             <div style={S.optionRow}>
-              {['20s', '30s', '40s', '50s+'].map(a => (
-                <button key={a} style={optionBtn(genPrefs.age === a)} onClick={() => setGenPrefs(p => ({ ...p, age: a }))}>{a}</button>
+              {['Asian', 'South Asian', 'Southeast Asian', 'Black', 'Hispanic', 'Middle Eastern', 'White'].map(eth => (
+                <button key={eth} style={optionBtn(genPrefs.ethnicity === eth)} onClick={() => setGenPrefs(p => ({ ...p, ethnicity: p.ethnicity === eth ? '' : eth }))}>{eth}</button>
               ))}
             </div>
 
-            <div style={{ fontWeight: '600', marginBottom: '6px', fontSize: '14px' }}>Style</div>
+            <div style={S.fieldLabel}>Style</div>
             <div style={S.optionRow}>
               {['Professional', 'Casual', 'Creative'].map(s => (
                 <button key={s} style={optionBtn(genPrefs.style === s)} onClick={() => setGenPrefs(p => ({ ...p, style: s }))}>{s}</button>
@@ -329,9 +323,9 @@ export default function Home() {
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
               <button
-                style={{ ...S.button, marginTop: 0, flex: 1 }}
+                style={{ ...S.button, marginTop: 0, flex: 1, opacity: canGenerate ? 1 : 0.5 }}
                 onClick={handleGeneratePortrait}
-                disabled={generating || !genPrefs.gender || !genPrefs.age || !genPrefs.style}
+                disabled={!canGenerate}
               >
                 {generating ? 'Generating...' : 'Generate'}
               </button>
