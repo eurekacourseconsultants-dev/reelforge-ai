@@ -91,28 +91,16 @@ for i, scene in enumerate(scenes):
     print(f"Generating clip {i+1}/6 [{WAN21_MODE}]: {scene[:60]}...")
     output_file = f"clip_{i}.mp4"
 
-    if WAN21_MODE == "i2v" and portrait_path:
-        cmd = (
-            f'python generate.py '
-            f'--task {task_flag} '
-            f'--size 832*480 '
-            f'--ckpt_dir {ckpt_dir} '
-            f'--image {portrait_path} '
-            f'--prompt "{scene}" '
-            f'--offload_model True '
-            f'--output {output_file}'
-        )
-    else:
-        cmd = (
-            f'python generate.py '
-            f'--task {task_flag} '
-            f'--size 832*480 '
-            f'--ckpt_dir {ckpt_dir} '
-            f'--prompt "{scene}" '
-            f'--offload_model True '
-            f'--t5_cpu '
-            f'--output {output_file}'
-        )
+    cmd = (
+        f'python generate.py '
+        f'--task {task_flag} '
+        f'--size 832*480 '
+        f'--ckpt_dir {ckpt_dir} '
+        f'--prompt "{scene}" '
+        f'--offload_model True '
+        f'--t5_cpu '
+        f'--output {output_file}'
+    )
 
     print(f"Running: {cmd}")
     ret = os.system(cmd)
