@@ -69,6 +69,9 @@ sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], ch
 os.chdir("wan2.1")
 print("Installing Wan2.1 requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
+# Uninstall flash_attn — not supported on P100 (sm_60, Pascal).
+# attention.py falls back to torch SDPA automatically when flash_attn is not available.
+sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "flash_attn", "flash_attn_interface"], check=False)
 
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
