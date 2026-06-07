@@ -55,12 +55,12 @@ jobs:
           SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/stage1.js
 
-      - name: Stage 2A - Voiceover (Avatar lip sync)
+      - name: Stage 2A - Voiceover (avatar_lipsync only)
         if: ${{ steps.classify.outputs.pipeline_mode == 'avatar_lipsync' }}
         env:
-          JOB_ID:      ${{ inputs.job_id }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID:               ${{ inputs.job_id }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -71,30 +71,18 @@ jobs:
           pip install kokoro soundfile numpy boto3
           python scripts/stage2a.py
 
-      - name: Stage 3A - EchoMimicV3 on Kaggle (Avatar lip sync)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'avatar_lipsync' }}
+      - name: Stage 2B - Wan2.1 on Kaggle (scene, avatar_scene, avatar_lipsync)
+        if: >
+          steps.classify.outputs.pipeline_mode == 'scene' ||
+          steps.classify.outputs.pipeline_mode == 'avatar_scene' ||
+          steps.classify.outputs.pipeline_mode == 'avatar_lipsync'
         env:
-          JOB_ID:           ${{ inputs.job_id }}
-          AVATAR_PHOTO_URL: ${{ inputs.avatar_photo_url }}
-          KAGGLE_POOL:      ${{ secrets.KAGGLE_POOL }}
-          SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
-        run: node scripts/stage3a.js
-
-      - name: Stage 2B - Wan2.1 on Kaggle (Scene or avatar-in-scene)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' || steps.classify.outputs.pipeline_mode == 'avatar_scene' }}
-        env:
-          JOB_ID:           ${{ inputs.job_id }}
-          AVATAR_PHOTO_URL: ${{ inputs.avatar_photo_url }}
-          PIPELINE_MODE:    ${{ steps.classify.outputs.pipeline_mode }}
-          KAGGLE_POOL:      ${{ secrets.KAGGLE_POOL }}
-          SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID:               ${{ inputs.job_id }}
+          AVATAR_PHOTO_URL:     ${{ inputs.avatar_photo_url }}
+          PIPELINE_MODE:        ${{ steps.classify.outputs.pipeline_mode }}
+          KAGGLE_POOL:          ${{ secrets.KAGGLE_POOL }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -102,12 +90,15 @@ jobs:
           R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage2b.js
 
-      - name: Stage 3B - Stitch Clips (Scene or avatar-in-scene)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' || steps.classify.outputs.pipeline_mode == 'avatar_scene' }}
+      - name: Stage 3B - Stitch Clips (scene, avatar_scene, avatar_lipsync)
+        if: >
+          steps.classify.outputs.pipeline_mode == 'scene' ||
+          steps.classify.outputs.pipeline_mode == 'avatar_scene' ||
+          steps.classify.outputs.pipeline_mode == 'avatar_lipsync'
         env:
-          JOB_ID:      ${{ inputs.job_id }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID:               ${{ inputs.job_id }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -115,14 +106,29 @@ jobs:
           R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3b.js
 
+      - name: Stage 3A - EchoMimicV3 on Kaggle (avatar_lipsync only)
+        if: ${{ steps.classify.outputs.pipeline_mode == 'avatar_lipsync' }}
+        env:
+          JOB_ID:               ${{ inputs.job_id }}
+          AVATAR_PHOTO_URL:     ${{ inputs.avatar_photo_url }}
+          KAGGLE_POOL:          ${{ secrets.KAGGLE_POOL }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
+        run: node scripts/stage3a.js
+
       - name: Install ffmpeg
         run: sudo apt-get install -y ffmpeg --fix-missing
 
       - name: Stage 4 - Final Encode
         env:
-          JOB_ID:      ${{ inputs.job_id }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID:               ${{ inputs.job_id }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
