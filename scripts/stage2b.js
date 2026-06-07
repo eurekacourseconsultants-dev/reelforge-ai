@@ -75,7 +75,7 @@ async function run() {
     kernel_type: 'script',
     is_private: true,
     enable_gpu: true,
-    accelerator: "nvidiaTeslaT4",
+    
     enable_internet: true,
     dataset_sources: [],
     competition_sources: [],
@@ -84,7 +84,7 @@ async function run() {
   }))
 
   console.log('Pushing Wan2.1 kernel to Kaggle...')
-  execSync('kaggle kernels push -p kaggle-push/wan21', { stdio: 'inherit' })
+  execSync('kaggle kernels push -p kaggle-push/wan21 --accelerator NvidiaTeslaT4', { stdio: 'inherit' })
   console.log('Kernel pushed. Waiting for clips_ready via Supabase...')
 
   await pollSupabaseForStatus('clips_ready')
