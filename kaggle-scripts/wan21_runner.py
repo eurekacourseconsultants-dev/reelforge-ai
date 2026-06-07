@@ -64,10 +64,10 @@ if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
 
 # Download model weights
 if WAN21_MODE == "i2v":
-    print("Downloading Wan2.1-I2V-14B-480P weights...")
-    snapshot_download("Wan-AI/Wan2.1-I2V-14B-480P", local_dir="./Wan2.1-I2V-14B-480P")
-    ckpt_dir = "./Wan2.1-I2V-14B-480P"
-    task_flag = "i2v-14B"
+    print("Downloading Wan2.1-I2V-1.3B-480P weights...")
+    snapshot_download("Wan-AI/Wan2.1-I2V-1.3B-480P", local_dir="./Wan2.1-I2V-1.3B-480P")
+    ckpt_dir = "./Wan2.1-I2V-1.3B-480P"
+    task_flag = "i2v-1.3B"
 else:
     print("Downloading Wan2.1-T2V-1.3B weights...")
     snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
