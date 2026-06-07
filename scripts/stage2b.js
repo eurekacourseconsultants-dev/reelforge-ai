@@ -2,10 +2,12 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
-const JOB_ID = process.env.JOB_ID
-const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
-const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_KEY
+const JOB_ID           = process.env.JOB_ID
+const AVATAR_PHOTO_URL = process.env.AVATAR_PHOTO_URL || ''
+const PIPELINE_MODE    = process.env.PIPELINE_MODE || 'scene'
+const KAGGLE_POOL      = JSON.parse(process.env.KAGGLE_POOL)
+const SUPABASE_URL     = process.env.SUPABASE_URL
+const SUPABASE_KEY     = process.env.SUPABASE_KEY
 
 async function pollSupabaseForStatus(targetStatus) {
   console.log(`Polling Supabase for status: ${targetStatus}...`)
@@ -35,7 +37,12 @@ async function run() {
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
 
   const pipelineData = JSON.parse(fs.readFileSync('pipeline_data.json', 'utf8'))
-  const scenesJson = JSON.stringify(pipelineData.scenes)
+  const scenesJson   = JSON.stringify(pipelineData.scenes)
+
+  // avatar_scene mode uses i2v (image-to-video with portrait reference)
+  // scene mode uses t2v (text-to-video only)
+  const wan21Mode = PIPELINE_MODE === 'avatar_scene' ? 'i2v' : 't2v'
+  console.log(`Wan2.1 mode: ${wan21Mode} (pipeline: ${PIPELINE_MODE})`)
 
   fs.mkdirSync('kaggle-push/wan21', { recursive: true })
 
@@ -44,6 +51,8 @@ async function run() {
     'import os',
     `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
     `os.environ["SCENES_JSON"] = ${JSON.stringify(scenesJson)}`,
+    `os.environ["WAN21_MODE"] = ${JSON.stringify(wan21Mode)}`,
+    `os.environ["AVATAR_PHOTO_URL"] = ${JSON.stringify(AVATAR_PHOTO_URL)}`,
     `os.environ["SUPABASE_URL"] = ${JSON.stringify(SUPABASE_URL)}`,
     `os.environ["SUPABASE_KEY"] = ${JSON.stringify(SUPABASE_KEY)}`,
     `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,

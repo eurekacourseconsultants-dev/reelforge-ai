@@ -2,35 +2,42 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
-const JOB_ID = process.env.JOB_ID
+const AVATAR_ID      = process.env.AVATAR_ID
+const AVATAR_NAME    = process.env.AVATAR_NAME || 'Avatar'
 const PORTRAIT_PREFS = process.env.PORTRAIT_PREFS || '{}'
-const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
-const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_KEY
+const KAGGLE_POOL    = JSON.parse(process.env.KAGGLE_POOL)
+const SUPABASE_URL   = process.env.SUPABASE_URL
+const SUPABASE_KEY   = process.env.SUPABASE_KEY
 
-async function pollSupabaseForPortrait() {
-  console.log('Polling Supabase for portrait completion...')
+async function pollAvatarReady() {
+  console.log(`Polling Supabase for avatar ${AVATAR_ID} completion...`)
   for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 30000))
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.spokesperson_photo_url`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      })
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/avatars?id=eq.${AVATAR_ID}&select=status,photo_url`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      )
       const data = await res.json()
-      if (data[0]?.value) {
-        console.log(`Portrait ready: ${data[0].value}`)
+      const avatar = data[0]
+      if (avatar?.status === 'ready' && avatar?.photo_url) {
+        console.log(`Avatar ready: ${avatar.photo_url}`)
         return
       }
-      console.log(`Poll ${i + 1}/60: portrait not ready yet...`)
+      if (avatar?.status === 'failed') {
+        throw new Error('Portrait runner reported failure')
+      }
+      console.log(`Poll ${i + 1}/60: avatar status=${avatar?.status || 'unknown'}`)
     } catch (e) {
+      if (e.message === 'Portrait runner reported failure') throw e
       console.log(`Poll ${i + 1}/60: fetch error, retrying...`)
     }
   }
-  throw new Error('Portrait timed out after 30 minutes')
+  throw new Error('Portrait generation timed out after 30 minutes')
 }
 
 async function run() {
-  const account = KAGGLE_POOL[0]
+  const account   = KAGGLE_POOL[0]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
   fs.mkdirSync(kaggleDir, { recursive: true })
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
@@ -40,7 +47,8 @@ async function run() {
   const baseScript = fs.readFileSync('kaggle-scripts/portrait_runner.py', 'utf8')
   const injected = [
     'import os',
-    `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
+    `os.environ["AVATAR_ID"] = ${JSON.stringify(AVATAR_ID)}`,
+    `os.environ["AVATAR_NAME"] = ${JSON.stringify(AVATAR_NAME)}`,
     `os.environ["PORTRAIT_PREFS"] = ${JSON.stringify(PORTRAIT_PREFS)}`,
     `os.environ["SUPABASE_URL"] = ${JSON.stringify(SUPABASE_URL)}`,
     `os.environ["SUPABASE_KEY"] = ${JSON.stringify(SUPABASE_KEY)}`,
@@ -71,9 +79,9 @@ async function run() {
 
   console.log('Pushing portrait kernel to Kaggle...')
   execSync('kaggle kernels push -p kaggle-push/portrait', { stdio: 'inherit' })
-  console.log('Kernel pushed. Waiting for portrait via Supabase...')
+  console.log('Kernel pushed. Polling Supabase for avatar ready...')
 
-  await pollSupabaseForPortrait()
+  await pollAvatarReady()
   console.log('Stage 0 complete.')
 }
 

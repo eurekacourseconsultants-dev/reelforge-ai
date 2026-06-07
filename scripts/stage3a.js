@@ -2,10 +2,11 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
-const JOB_ID = process.env.JOB_ID
-const KAGGLE_POOL = JSON.parse(process.env.KAGGLE_POOL)
-const SUPABASE_URL = process.env.SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_KEY
+const JOB_ID          = process.env.JOB_ID
+const AVATAR_PHOTO_URL = process.env.AVATAR_PHOTO_URL
+const KAGGLE_POOL     = JSON.parse(process.env.KAGGLE_POOL)
+const SUPABASE_URL    = process.env.SUPABASE_URL
+const SUPABASE_KEY    = process.env.SUPABASE_KEY
 
 async function pollSupabaseForStatus(targetStatus) {
   console.log(`Polling Supabase for status: ${targetStatus}...`)
@@ -28,21 +29,14 @@ async function pollSupabaseForStatus(targetStatus) {
   throw new Error(`Timed out waiting for ${targetStatus}`)
 }
 
-async function getSpokespersonUrl() {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?key=eq.spokesperson_photo_url`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-  })
-  const data = await res.json()
-  return data[0]?.value
-}
-
 async function run() {
+  if (!AVATAR_PHOTO_URL) throw new Error('AVATAR_PHOTO_URL is required for stage3a')
+
   const account = KAGGLE_POOL[0]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
   fs.mkdirSync(kaggleDir, { recursive: true })
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
 
-  const spokespersonUrl = await getSpokespersonUrl()
   const audioUrl = fs.readFileSync('audio_url.txt', 'utf8').trim()
 
   fs.mkdirSync('kaggle-push/echomimic', { recursive: true })
@@ -58,7 +52,7 @@ async function run() {
     `os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}`,
     `os.environ["R2_BUCKET_NAME"] = ${JSON.stringify(process.env.R2_BUCKET_NAME)}`,
     `os.environ["R2_PUBLIC_URL"] = ${JSON.stringify(process.env.R2_PUBLIC_URL)}`,
-    `os.environ["SPOKESPERSON_PHOTO_URL"] = ${JSON.stringify(spokespersonUrl)}`,
+    `os.environ["SPOKESPERSON_PHOTO_URL"] = ${JSON.stringify(AVATAR_PHOTO_URL)}`,
     `os.environ["AUDIO_URL"] = ${JSON.stringify(audioUrl)}`,
     '',
     baseScript
@@ -80,7 +74,7 @@ async function run() {
     model_sources: [],
   }))
 
-  console.log('Pushing EchoMimic kernel to Kaggle...')
+  console.log('Pushing EchoMimicV3 kernel to Kaggle...')
   execSync('kaggle kernels push -p kaggle-push/echomimic', { stdio: 'inherit' })
   console.log('Kernel pushed. Waiting for video_ready via Supabase...')
 
