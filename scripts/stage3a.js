@@ -32,7 +32,8 @@ async function pollSupabaseForStatus(targetStatus) {
 async function run() {
   if (!AVATAR_PHOTO_URL) throw new Error('AVATAR_PHOTO_URL is required for stage3a')
 
-  const account = KAGGLE_POOL[0]
+  // Must use index 1 — index 0 is used by Wan2.1 (stage2b)
+  const account = KAGGLE_POOL[1]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
   fs.mkdirSync(kaggleDir, { recursive: true })
   fs.writeFileSync(path.join(kaggleDir, 'kaggle.json'), JSON.stringify(account), { mode: 0o600 })
@@ -76,9 +77,9 @@ async function run() {
 
   console.log('Pushing EchoMimicV3 kernel to Kaggle...')
   execSync('kaggle kernels push -p kaggle-push/echomimic', { stdio: 'inherit' })
-  console.log('Kernel pushed. Waiting for video_ready via Supabase...')
+  console.log('Kernel pushed. Waiting for lipsync_ready via Supabase...')
 
-  await pollSupabaseForStatus('video_ready')
+  await pollSupabaseForStatus('lipsync_ready')
   console.log('Stage 3A complete.')
 }
 
