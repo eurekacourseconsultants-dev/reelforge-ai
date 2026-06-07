@@ -3,7 +3,9 @@ import requests
 import sys
 
 os.system("apt-get install -y git ffmpeg --fix-missing")
-os.system("pip install -q torch==2.5.1 torchvision torchaudio xformers torchao boto3 huggingface_hub")
+# Must use cu126 — last build with Pascal/sm_60 (P100) support
+os.system("pip install -q torch==2.6.0+cu126 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126")
+os.system("pip install -q xformers torchao boto3 huggingface_hub")
 
 JOB_ID = os.environ["JOB_ID"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -32,16 +34,18 @@ def patch_supabase(data):
 print("Cloning EchoMimicV3...")
 os.system("git clone https://github.com/antgroup/echomimic_v3")
 os.chdir("echomimic_v3")
+
+# Remove tensorflow — not needed for inference, not available on this Python version
+os.system("sed -i '/tensorflow/d' requirements.txt")
 os.system("pip install -q -r requirements.txt")
 
 from huggingface_hub import snapshot_download
 
 # --- Download models ---
-print("Downloading Wan2.1-Fun-V1.1-1.3B-InP base model...")
-snapshot_download(
-    "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP",
-    local_dir="flash/Wan2.1-Fun-V1.1-1.3B-InP"
-)
+# NOTE: Do NOT download alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP here.
+# That's 18GB and blows the 20GB Kaggle disk limit.
+# EchoMimicV3 Flash bundles its own transformer weights via BadToBest/EchoMimicV3.
+# The --model_name flag points to where those weights live locally, not a separate download.
 
 print("Downloading chinese-wav2vec2-base audio encoder...")
 snapshot_download(
@@ -94,12 +98,13 @@ print(f"WAV saved: {os.path.getsize('inputs/voiceover.wav')} bytes")
 # Key parameters:
 # --num_inference_steps 8  (flash-pro supports 8-step high quality)
 # --video_length 81        (reduce if OOM — try 65 or 49)
-# --sample_size 512 512    (reduce from 768 to fit P100 16GB)
+# --sample_size 512 512    (reduced from 768 to fit P100 16GB)
 # --audio_guidance_scale 2.0 (optimal range 1.8-2.0)
 # --guidance_scale 5.0     (optimal range 3-6)
 # --enable_teacache        (speeds up generation, reduces VRAM)
 # --teacache_threshold 0.1 (optimal range 0-0.1)
 # --weight_dtype bfloat16  (P100 supports bfloat16)
+# --model_name points to the flash transformer weights dir (NOT a separate Wan2.1 download)
 
 print("Running EchoMimicV3 Flash inference...")
 cmd = (
@@ -109,7 +114,7 @@ cmd = (
     f"--prompt 'A person is speaking naturally, looking at camera.' "
     f"--num_inference_steps 8 "
     f"--config_path config/config.yaml "
-    f"--model_name flash/Wan2.1-Fun-V1.1-1.3B-InP "
+    f"--model_name flash "
     f"--transformer_path flash/transformer/diffusion_pytorch_model.safetensors "
     f"--save_path outputs "
     f"--wav2vec_model_dir flash/chinese-wav2vec2-base "
@@ -163,9 +168,9 @@ s3 = boto3.client(
     aws_access_key_id=R2_ACCESS_KEY_ID,
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
-r2_key = f"raw/{JOB_ID}.mp4"
+r2_key = f"raw/{JOB_ID}_lipsync.mp4"
 s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
 r2_url = f"{R2_PUBLIC_URL}/{r2_key}"
 
-patch_supabase({"status": "video_ready", "raw_video_url": r2_url})
+patch_supabase({"status": "lipsync_ready", "lipsync_video_url": r2_url})
 print(f"Done. Uploaded to {r2_url}")

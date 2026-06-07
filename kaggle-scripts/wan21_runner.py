@@ -4,10 +4,24 @@ import json
 import requests
 import subprocess
 
+# Must pin these exact versions for P100 (sm_60 Pascal) compatibility:
+# - torch 2.6.0+cu126: last build with sm_60 support
+# - diffusers 0.31.0: required by Wan2.1
+# - transformers 4.44.2: FLAX_WEIGHTS_NAME removed in 4.45+, breaks diffusers 0.31.0
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "torch", "diffusers", "transformers", "accelerate",
-    "boto3", "huggingface_hub", "Pillow"
+    "torch==2.6.0+cu126", "torchvision", "torchaudio",
+    "--index-url", "https://download.pytorch.org/whl/cu126"
+], check=True)
+
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "diffusers==0.31.0",
+    "transformers==4.44.2",
+    "accelerate",
+    "boto3",
+    "huggingface_hub",
+    "Pillow"
 ], check=True)
 
 import boto3
