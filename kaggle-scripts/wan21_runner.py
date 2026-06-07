@@ -75,6 +75,8 @@ import subprocess as sp
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
+print("Installing Wan2.1 requirements...")
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
 
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
