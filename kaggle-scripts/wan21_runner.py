@@ -58,15 +58,7 @@ def patch_supabase(data):
         json=data,
     )
 
-# Download avatar portrait if i2v mode
-portrait_path = None
-if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
-    print(f"Downloading avatar portrait for i2v mode...")
-    r = requests.get(AVATAR_PHOTO_URL)
-    portrait_path = "avatar_portrait.jpg"
-    with open(portrait_path, "wb") as f:
-        f.write(r.content)
-    print(f"Portrait saved: {os.path.getsize(portrait_path)} bytes")
+# Portrait download removed — T2V-1.3B only, no I2V available at this model size
 
 # Download model weights
 # NOTE: Wan2.1-I2V-1.3B does not exist. Only I2V-14B exists (~15GB, exceeds Kaggle disk).
@@ -102,7 +94,7 @@ for i, scene in enumerate(scenes):
         f'--prompt "{scene}" '
         f'--offload_model True '
         f'--t5_cpu '
-        f'--output {output_file}'
+        f'--save_file {output_file}'
     )
 
     print(f"Running: {cmd}")
