@@ -70,8 +70,49 @@ os.chdir("wan2.1")
 print("Installing Wan2.1 requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
 # Uninstall flash_attn — not supported on P100 (sm_60, Pascal).
-# attention.py falls back to torch SDPA automatically when flash_attn is not available.
 sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "flash_attn", "flash_attn_interface"], check=False)
+
+# Patch attention.py to use torch SDPA fallback instead of asserting flash_attn is available.
+# The cloned repo's attention.py has a hard assert FLASH_ATTN_2_AVAILABLE with no fallback.
+attention_patch = """
+import torch
+import warnings
+
+FLASH_ATTN_3_AVAILABLE = False
+FLASH_ATTN_2_AVAILABLE = False
+
+__all__ = ['flash_attention', 'attention']
+
+def flash_attention(q, k, v, q_lens=None, k_lens=None, dropout_p=0., softmax_scale=None,
+                    q_scale=None, causal=False, window_size=(-1, -1), deterministic=False,
+                    dtype=torch.bfloat16, version=None):
+    half_dtypes = (torch.float16, torch.bfloat16)
+    assert dtype in half_dtypes
+    b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
+    def half(x):
+        return x if x.dtype in half_dtypes else x.to(dtype)
+    if q_lens is not None or k_lens is not None:
+        warnings.warn('Padding mask is disabled when using scaled_dot_product_attention.')
+    q = half(q).transpose(1, 2)
+    k = half(k).transpose(1, 2)
+    v = half(v).transpose(1, 2)
+    if q_scale is not None:
+        q = q * q_scale
+    out = torch.nn.functional.scaled_dot_product_attention(
+        q, k, v, is_causal=causal, dropout_p=dropout_p)
+    return out.transpose(1, 2).contiguous().type(out_dtype)
+
+def attention(q, k, v, q_lens=None, k_lens=None, dropout_p=0., softmax_scale=None,
+              q_scale=None, causal=False, window_size=(-1, -1), deterministic=False,
+              dtype=torch.bfloat16, fa_version=None):
+    return flash_attention(q=q, k=k, v=v, q_lens=q_lens, k_lens=k_lens,
+                           dropout_p=dropout_p, softmax_scale=softmax_scale,
+                           q_scale=q_scale, causal=causal, window_size=window_size,
+                           deterministic=deterministic, dtype=dtype, version=fa_version)
+"""
+with open("wan/modules/attention.py", "w") as f:
+    f.write(attention_patch)
+print("Patched attention.py with SDPA fallback")
 
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
