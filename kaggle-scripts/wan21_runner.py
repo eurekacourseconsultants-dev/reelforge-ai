@@ -69,16 +69,12 @@ if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
     print(f"Portrait saved: {os.path.getsize(portrait_path)} bytes")
 
 # Download model weights
-if WAN21_MODE == "i2v":
-    print("Downloading Wan2.1-T2V-1.3B weights...")
-    snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
-    ckpt_dir = "./Wan2.1-I2V-1.3B"
-    task_flag = "i2v-1.3B"
-else:
-    print("Downloading Wan2.1-T2V-1.3B weights...")
-    snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
-    ckpt_dir = "./Wan2.1-T2V-1.3B"
-    task_flag = "t2v-1.3B"
+# NOTE: Wan2.1-I2V-1.3B does not exist. Only I2V-14B exists (~15GB, exceeds Kaggle disk).
+# All modes use T2V-1.3B for testing. Avatar appearance is driven by scene prompts.
+print("Downloading Wan2.1-T2V-1.3B weights...")
+snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
+ckpt_dir = "./Wan2.1-T2V-1.3B"
+task_flag = "t2v-1.3B"
 
 s3 = boto3.client(
     "s3",
