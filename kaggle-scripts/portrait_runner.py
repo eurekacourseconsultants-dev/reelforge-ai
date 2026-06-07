@@ -4,9 +4,19 @@ import subprocess
 import requests
 import json
 
+# P100 is CUDA sm_60 (Pascal). Kaggle's default PyTorch only supports sm_70+.
+# Must install PyTorch 2.0.1 with CUDA 11.8 which still supports sm_60.
+print("Installing PyTorch 2.0.1 for P100 (sm_60) compatibility...")
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "diffusers", "transformers", "accelerate", "boto3",
+    "torch==2.0.1", "torchvision==0.15.2", "torchaudio==2.0.2",
+    "--index-url", "https://download.pytorch.org/whl/cu118",
+    "--force-reinstall"
+], check=True)
+
+subprocess.run([
+    sys.executable, "-m", "pip", "install", "-q",
+    "diffusers==0.27.2", "transformers", "accelerate", "boto3",
     "huggingface_hub", "Pillow", "opencv-python-headless"
 ], check=True)
 
