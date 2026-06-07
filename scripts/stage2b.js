@@ -8,6 +8,7 @@ const PIPELINE_MODE    = process.env.PIPELINE_MODE || 'scene'
 const KAGGLE_POOL      = JSON.parse(process.env.KAGGLE_POOL)
 const SUPABASE_URL     = process.env.SUPABASE_URL
 const SUPABASE_KEY     = process.env.SUPABASE_KEY
+const HF_TOKEN         = process.env.HF_TOKEN || ''
 
 async function pollSupabaseForStatus(targetStatus) {
   console.log(`Polling Supabase for status: ${targetStatus}...`)
@@ -39,9 +40,9 @@ async function run() {
   const pipelineData = JSON.parse(fs.readFileSync('pipeline_data.json', 'utf8'))
   const scenesJson   = JSON.stringify(pipelineData.scenes)
 
-  // avatar_scene mode uses i2v (image-to-video with portrait reference)
-  // scene mode uses t2v (text-to-video only)
-  const wan21Mode = PIPELINE_MODE === 'avatar_scene' ? 'i2v' : 't2v'
+  // avatar_scene and avatar_lipsync both use i2v (portrait as reference frame)
+  // scene uses t2v (text-to-video only)
+  const wan21Mode = (PIPELINE_MODE === 'avatar_scene' || PIPELINE_MODE === 'avatar_lipsync') ? 'i2v' : 't2v'
   console.log(`Wan2.1 mode: ${wan21Mode} (pipeline: ${PIPELINE_MODE})`)
 
   fs.mkdirSync('kaggle-push/wan21', { recursive: true })
@@ -60,6 +61,7 @@ async function run() {
     `os.environ["R2_SECRET_ACCESS_KEY"] = ${JSON.stringify(process.env.R2_SECRET_ACCESS_KEY)}`,
     `os.environ["R2_BUCKET_NAME"] = ${JSON.stringify(process.env.R2_BUCKET_NAME)}`,
     `os.environ["R2_PUBLIC_URL"] = ${JSON.stringify(process.env.R2_PUBLIC_URL)}`,
+    `os.environ["HF_TOKEN"] = ${JSON.stringify(HF_TOKEN)}`,
     '',
     baseScript
   ].join('\n')
