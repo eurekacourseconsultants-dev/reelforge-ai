@@ -131,9 +131,11 @@ for i, scene in enumerate(scenes):
     output_file = f"clip_{i}.mp4"
 
     cmd = (
+        f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
         f'python generate.py '
         f'--task {task_flag} '
         f'--size 832*480 '
+        f'--frame_num 16 '
         f'--ckpt_dir {ckpt_dir} '
         f'--prompt "{scene}" '
         f'--offload_model True '
