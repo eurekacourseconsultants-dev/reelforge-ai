@@ -73,7 +73,8 @@ if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
 # All modes use T2V-1.3B for testing. Avatar appearance is driven by scene prompts.
 import subprocess as sp
 print("Cloning Wan2.1 inference code...")
-sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "."], check=True)
+sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
+os.chdir("wan2.1")
 
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
