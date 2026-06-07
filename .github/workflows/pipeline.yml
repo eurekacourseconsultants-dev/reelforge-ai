@@ -9,13 +9,14 @@ on:
       prompt:
         required: true
         type: string
-      portrait_needed:
-        required: true
-        type: string
-      portrait_prefs:
+      avatar_id:
         required: false
         type: string
-        default: '{}'
+        default: ''
+      avatar_photo_url:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   pipeline:
@@ -42,90 +43,76 @@ jobs:
       - name: Install Node deps
         run: npm ci
 
-      - name: Stage 0 - Portrait Generation
-        if: ${{ inputs.portrait_needed == 'true' }}
-        env:
-          JOB_ID: ${{ inputs.job_id }}
-          PORTRAIT_PREFS: ${{ inputs.portrait_prefs }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
-          KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: node scripts/stage0.js
-
       - name: Stage 1 - Classify and Script
         id: classify
         env:
-          JOB_ID: ${{ inputs.job_id }}
-          PROMPT: ${{ inputs.prompt }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID:           ${{ inputs.job_id }}
+          PROMPT:           ${{ inputs.prompt }}
+          AVATAR_ID:        ${{ inputs.avatar_id }}
+          AVATAR_PHOTO_URL: ${{ inputs.avatar_photo_url }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/stage1.js
 
-      - name: Stage 2A - Voiceover (Spokesperson)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'spokesperson' }}
+      - name: Stage 2A - Voiceover (Avatar lip sync)
+        if: ${{ steps.classify.outputs.pipeline_mode == 'avatar_lipsync' }}
         env:
-          JOB_ID: ${{ inputs.job_id }}
+          JOB_ID:      ${{ inputs.job_id }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: |
           sudo apt-get install -y espeak-ng
           pip install kokoro soundfile numpy boto3
           python scripts/stage2a.py
 
-      - name: Stage 3A - EchoMimic on Kaggle (Spokesperson)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'spokesperson' }}
+      - name: Stage 3A - EchoMimicV3 on Kaggle (Avatar lip sync)
+        if: ${{ steps.classify.outputs.pipeline_mode == 'avatar_lipsync' }}
         env:
-          JOB_ID: ${{ inputs.job_id }}
-          KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          JOB_ID:           ${{ inputs.job_id }}
+          AVATAR_PHOTO_URL: ${{ inputs.avatar_photo_url }}
+          KAGGLE_POOL:      ${{ secrets.KAGGLE_POOL }}
+          SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3a.js
 
-      - name: Stage 2B - Wan2.1 on Kaggle (Scene)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' }}
+      - name: Stage 2B - Wan2.1 on Kaggle (Scene or avatar-in-scene)
+        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' || steps.classify.outputs.pipeline_mode == 'avatar_scene' }}
         env:
-          JOB_ID: ${{ inputs.job_id }}
-          KAGGLE_POOL: ${{ secrets.KAGGLE_POOL }}
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          JOB_ID:           ${{ inputs.job_id }}
+          AVATAR_PHOTO_URL: ${{ inputs.avatar_photo_url }}
+          PIPELINE_MODE:    ${{ steps.classify.outputs.pipeline_mode }}
+          KAGGLE_POOL:      ${{ secrets.KAGGLE_POOL }}
+          SUPABASE_URL:     ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:     ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage2b.js
 
-      - name: Stage 3B - Stitch Clips (Scene)
-        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' }}
+      - name: Stage 3B - Stitch Clips (Scene or avatar-in-scene)
+        if: ${{ steps.classify.outputs.pipeline_mode == 'scene' || steps.classify.outputs.pipeline_mode == 'avatar_scene' }}
         env:
-          JOB_ID: ${{ inputs.job_id }}
+          JOB_ID:      ${{ inputs.job_id }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage3b.js
 
       - name: Install ffmpeg
@@ -133,20 +120,20 @@ jobs:
 
       - name: Stage 4 - Final Encode
         env:
-          JOB_ID: ${{ inputs.job_id }}
+          JOB_ID:      ${{ inputs.job_id }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/stage4.js
 
       - name: On Failure
         if: failure()
         env:
-          JOB_ID: ${{ inputs.job_id }}
+          JOB_ID:      ${{ inputs.job_id }}
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |

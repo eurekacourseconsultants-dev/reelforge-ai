@@ -2,24 +2,22 @@ import { NextResponse } from 'next/server'
 import supabase from '@/lib/supabase'
 
 export async function POST(req) {
-  const body = await req.json()
-  const { prompt, portrait_prefs, _checkOnly } = body
+  const { prompt, avatar_id } = await req.json()
 
-  const { data: settings } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'spokesperson_photo_url')
-    .single()
-
-  const portrait_needed = !settings?.value
-
-  if (_checkOnly) {
-    return NextResponse.json({ portrait_needed })
+  // Resolve avatar photo URL if an avatar was selected
+  let avatar_photo_url = null
+  if (avatar_id) {
+    const { data: avatar } = await supabase
+      .from('avatars')
+      .select('photo_url')
+      .eq('id', avatar_id)
+      .single()
+    avatar_photo_url = avatar?.photo_url || null
   }
 
   const { data: job, error } = await supabase
     .from('jobs')
-    .insert({ prompt, status: 'pending' })
+    .insert({ prompt, status: 'pending', avatar_id: avatar_id || null })
     .select()
     .single()
 
@@ -37,10 +35,10 @@ export async function POST(req) {
       body: JSON.stringify({
         ref: 'main',
         inputs: {
-          job_id: job.id,
+          job_id:           job.id,
           prompt,
-          portrait_needed: String(portrait_needed),
-          portrait_prefs: JSON.stringify(portrait_prefs || {}),
+          avatar_id:        avatar_id || '',
+          avatar_photo_url: avatar_photo_url || '',
         },
       }),
     }

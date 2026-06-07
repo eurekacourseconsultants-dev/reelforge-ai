@@ -14,65 +14,80 @@ import torch
 import boto3
 import cv2
 from PIL import Image
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, AutoencoderKL
 
-JOB_ID = os.environ["JOB_ID"]
-PORTRAIT_PREFS = os.environ.get("PORTRAIT_PREFS", "{}")
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-R2_ACCOUNT_ID = os.environ["R2_ACCOUNT_ID"]
-R2_ACCESS_KEY_ID = os.environ["R2_ACCESS_KEY_ID"]
+AVATAR_ID            = os.environ["AVATAR_ID"]
+AVATAR_NAME          = os.environ.get("AVATAR_NAME", "Avatar")
+PORTRAIT_PREFS       = os.environ.get("PORTRAIT_PREFS", "{}")
+SUPABASE_URL         = os.environ["SUPABASE_URL"]
+SUPABASE_KEY         = os.environ["SUPABASE_KEY"]
+R2_ACCOUNT_ID        = os.environ["R2_ACCOUNT_ID"]
+R2_ACCESS_KEY_ID     = os.environ["R2_ACCESS_KEY_ID"]
 R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
-R2_BUCKET_NAME = os.environ["R2_BUCKET_NAME"]
-R2_PUBLIC_URL = os.environ["R2_PUBLIC_URL"]
+R2_BUCKET_NAME       = os.environ["R2_BUCKET_NAME"]
+R2_PUBLIC_URL        = os.environ["R2_PUBLIC_URL"]
 
-prefs = json.loads(PORTRAIT_PREFS) if PORTRAIT_PREFS else {}
+prefs  = json.loads(PORTRAIT_PREFS) if PORTRAIT_PREFS else {}
 gender = prefs.get("gender", "woman")
-age = prefs.get("age", "20s")
-style = prefs.get("style", "professional")
+age    = prefs.get("age", "20s")
+style  = prefs.get("style", "professional")
 
-def patch_supabase(data):
+def patch_avatar(data):
     requests.patch(
-        f"{SUPABASE_URL}/rest/v1/jobs?id=eq.{JOB_ID}",
-        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json"},
+        f"{SUPABASE_URL}/rest/v1/avatars?id=eq.{AVATAR_ID}",
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+        },
         json=data,
     )
 
-def is_frontal(image_path, threshold=0.25):
-    img = cv2.imread(image_path)
+def is_frontal(image_path, threshold=0.20):
+    img  = cv2.imread(image_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    cascade = cv2.CascadeClassifier(cascade_path)
+    cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
     if len(faces) != 1:
         print(f"Face check failed: detected {len(faces)} faces")
         return False
     x, y, w, h = faces[0]
-    img_w = img.shape[1]
+    img_w  = img.shape[1]
     offset = abs((x + w / 2) - img_w / 2) / img_w
     print(f"Face center offset: {offset:.3f} (threshold {threshold})")
     return offset < threshold
 
 prompts = [
-    f"RAW photo, passport photo of a {age} asian {gender}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic, 8k uhd, dslr, high quality",
-    f"RAW photo, id card photo of a {age} asian {gender}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic, high quality skin",
-    f"RAW photo, mugshot style portrait of a {age} asian {gender}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic, natural skin tones",
-    f"RAW photo, professional headshot of a {age} asian {gender}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic, color photo",
+    f"RAW photo, passport photo of a {age} asian {gender}, face directly forward, eyes looking straight at camera, plain white top, neutral grey background, head and shoulders, symmetrical, studio lighting, photorealistic, 8k uhd, sharp focus, color photo",
+    f"RAW photo, id card photo of a {age} asian {gender}, frontal face, straight ahead gaze, simple clothing, grey background, sharp focus, photorealistic, high quality skin, color photo, natural skin tones",
+    f"RAW photo, professional headshot of a {age} asian {gender}, perfectly centered face, looking directly at camera, solid color top, studio background, photorealistic, color photo, natural skin tones",
+    f"RAW photo, mugshot style portrait of a {age} asian {gender}, face forward, direct eye contact, plain top, neutral background, symmetrical, photorealistic, color photo, natural skin tones",
 ]
-negative_prompt = "monochrome, grayscale, black and white, side view, profile, three quarter view, angled, turned, looking away, sunglasses, hat, cartoon, anime, blurry, low quality, deformed, full body, jacket, blazer, suit, hands, arms, dynamic pose"
+negative_prompt = (
+    "monochrome, grayscale, black and white, sepia, side view, profile, "
+    "three quarter view, angled, turned, looking away, sunglasses, hat, "
+    "cartoon, anime, blurry, low quality, deformed, full body, jacket, "
+    "blazer, suit, hands, arms, dynamic pose, painting, illustration"
+)
 
-# Realistic Vision V6.0 — same SD 1.5 architecture, same memory footprint,
-# but fine-tuned specifically for photorealistic portraits with natural skin tones
-# and colour output. Drop-in replacement for runwayml/stable-diffusion-v1-5.
-print("Loading Realistic Vision V6.0 pipeline on CPU...")
+print("Loading VAE: stabilityai/sd-vae-ft-mse...")
+vae = AutoencoderKL.from_pretrained(
+    "stabilityai/sd-vae-ft-mse",
+    torch_dtype=torch.float16,
+)
+
+print("Loading Realistic Vision V5.1 pipeline on GPU...")
 pipe = StableDiffusionPipeline.from_pretrained(
-    "SG161222/Realistic_Vision_V6.0_B1_noVAE",
-    torch_dtype=torch.float32,
+    "SG161222/Realistic_Vision_V5.1_noVAE",
+    vae=vae,
+    torch_dtype=torch.float16,
     safety_checker=None,
 )
-pipe = pipe.to("cpu")
+pipe = pipe.to("cuda")
+print("Pipeline loaded on GPU.")
 
 image = None
+last_result = None
 for attempt, prompt in enumerate(prompts):
     print(f"Attempt {attempt+1}/4: generating...")
     result = pipe(
@@ -80,9 +95,10 @@ for attempt, prompt in enumerate(prompts):
         negative_prompt=negative_prompt,
         height=512,
         width=512,
-        num_inference_steps=25,
+        num_inference_steps=30,
         guidance_scale=7.5,
     ).images[0]
+    last_result = result
     result.save("portrait_candidate.jpg")
     if is_frontal("portrait_candidate.jpg"):
         print(f"Frontal face confirmed on attempt {attempt+1}")
@@ -92,24 +108,38 @@ for attempt, prompt in enumerate(prompts):
 
 if image is None:
     print("WARNING: no frontal face after 4 attempts - using last candidate")
-    image = result
+    image = last_result
 
 image = image.resize((512, 512), Image.LANCZOS)
 image.save("portrait.jpg")
-print("Portrait saved.")
+
+# Save thumbnail (256x256)
+thumb = image.resize((256, 256), Image.LANCZOS)
+thumb.save("portrait_thumb.jpg")
+print("Portrait and thumbnail saved.")
 
 print("Uploading to R2...")
-s3 = boto3.client("s3",
+s3 = boto3.client(
+    "s3",
     endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
     aws_access_key_id=R2_ACCESS_KEY_ID,
-    aws_secret_access_key=R2_SECRET_ACCESS_KEY)
-s3.upload_file("portrait.jpg", R2_BUCKET_NAME, "assets/spokesperson.jpg")
-r2_url = f"{R2_PUBLIC_URL}/assets/spokesperson.jpg"
-print(f"Uploaded to {r2_url}")
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+)
 
-requests.post(f"{SUPABASE_URL}/rest/v1/settings",
-    headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
-    json={"key": "spokesperson_photo_url", "value": r2_url})
+r2_key       = f"avatars/{AVATAR_ID}.jpg"
+r2_thumb_key = f"avatars/{AVATAR_ID}_thumb.jpg"
 
-patch_supabase({"status": "portrait_ready"})
+s3.upload_file("portrait.jpg",       R2_BUCKET_NAME, r2_key,       ExtraArgs={"ContentType": "image/jpeg"})
+s3.upload_file("portrait_thumb.jpg", R2_BUCKET_NAME, r2_thumb_key, ExtraArgs={"ContentType": "image/jpeg"})
+
+photo_url     = f"{R2_PUBLIC_URL}/{r2_key}"
+thumbnail_url = f"{R2_PUBLIC_URL}/{r2_thumb_key}"
+print(f"Uploaded: {photo_url}")
+print(f"Thumbnail: {thumbnail_url}")
+
+patch_avatar({
+    "photo_url":     photo_url,
+    "thumbnail_url": thumbnail_url,
+    "status":        "ready",
+})
 print("Done.")
