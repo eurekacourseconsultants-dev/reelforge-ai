@@ -96,9 +96,19 @@ for i, scene in enumerate(scenes):
     print(f"Prompt: {scene[:120]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
-    settings = {
-        "type": "WanGP",
-        "model_type": "t2v_1.3B",
+    # Determine model_type
+    if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
+        model_type = "i2v_1.3B"
+        print("i2v mode — using avatar as reference frame")
+    else:
+        model_type = "t2v_1.3B"
+        print("t2v mode — cold start")
+
+    # WanGP --process expects a JSON with a "tasks" array.
+    # Each task must have "model_type" matching a filename in WanGP's defaults/ folder.
+    # The "type" key at the top level is NOT used — model_type inside the task is what matters.
+    task = {
+        "model_type": model_type,
         "prompt": scene,
         "negative_prompt": NEG_PROMPT,
         "width": 832,
@@ -109,19 +119,19 @@ for i, scene in enumerate(scenes):
         "output_file": output_file,
     }
 
-    if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
-        # i2v: avatar photo as reference frame — consistent appearance across all clips
-        # Each clip cold-starts from the same avatar image (no chaining between clips)
-        settings["model_type"] = "i2v_1.3B"
-        settings["image"] = avatar_image_path
-        print(f"i2v mode — using avatar as reference frame")
-    else:
-        settings["model_type"] = "t2v_1.3B"
-        print(f"t2v mode — cold start")
+    # Add image reference for i2v
+    if model_type == "i2v_1.3B":
+        task["image"] = avatar_image_path
+
+    # Wrap in tasks array — this is the required WanGP headless format
+    settings = {"tasks": [task]}
 
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
         json.dump(settings, f)
+
+    # Print the settings for debugging
+    print(f"Settings JSON: {json.dumps(settings, indent=2)[:300]}")
 
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
