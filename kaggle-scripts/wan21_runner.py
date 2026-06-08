@@ -98,6 +98,7 @@ for i, scene in enumerate(scenes):
 
     settings = {
         "type": "WanGP",
+        "model_type": "t2v_1.3B",
         "prompt": scene,
         "negative_prompt": NEG_PROMPT,
         "width": 832,
