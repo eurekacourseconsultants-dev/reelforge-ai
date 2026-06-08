@@ -57,6 +57,9 @@ def patch_supabase(data):
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
+print("Installing flash_attn for torch 2.10 + Python 3.12...")
+sp.run([sys.executable, "-m", "pip", "install", "-q", "https://github.com/lesj0610/flash-attention/releases/download/v2.8.3-cu12-torch2.10-cp312/flash_attn-2.8.3+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl"], check=True)
+print("flash_attn installed.")
 print("Installing Wan2.1 requirements (skipping flash_attn)...")
 # Remove flash_attn from requirements to avoid 70-min compile
 import re as _re
