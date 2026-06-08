@@ -2,13 +2,12 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
-const JOB_ID           = process.env.JOB_ID
-const AVATAR_PHOTO_URL = process.env.AVATAR_PHOTO_URL || ''
-const PIPELINE_MODE    = process.env.PIPELINE_MODE || 'scene'
-const KAGGLE_POOL      = JSON.parse(process.env.KAGGLE_POOL)
-const SUPABASE_URL     = process.env.SUPABASE_URL
-const SUPABASE_KEY     = process.env.SUPABASE_KEY
-const HF_TOKEN         = process.env.HF_TOKEN || ''
+const JOB_ID        = process.env.JOB_ID
+const PIPELINE_MODE = process.env.PIPELINE_MODE || 'scene'
+const KAGGLE_POOL   = JSON.parse(process.env.KAGGLE_POOL)
+const SUPABASE_URL  = process.env.SUPABASE_URL
+const SUPABASE_KEY  = process.env.SUPABASE_KEY
+const HF_TOKEN      = process.env.HF_TOKEN || ''
 
 async function pollSupabaseForStatus(targetStatus) {
   console.log(`Polling Supabase for status: ${targetStatus}...`)
@@ -31,6 +30,35 @@ async function pollSupabaseForStatus(targetStatus) {
   throw new Error(`Timed out waiting for ${targetStatus}`)
 }
 
+async function getAvatarDescription() {
+  // Fetch the job to get avatar_id
+  const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/jobs?id=eq.${JOB_ID}&select=avatar_id`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+  })
+  const jobData = await jobRes.json()
+  const avatarId = jobData[0]?.avatar_id
+  if (!avatarId) return ''
+
+  // Fetch avatar details
+  const avatarRes = await fetch(`${SUPABASE_URL}/rest/v1/avatars?id=eq.${avatarId}&select=gender,age,ethnicity,style`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+  })
+  const avatarData = await avatarRes.json()
+  const avatar = avatarData[0]
+  if (!avatar) return ''
+
+  // Build a natural description to prepend to every scene prompt
+  // e.g. "30-year-old East Asian woman, business casual style"
+  const parts = []
+  if (avatar.age) parts.push(`${avatar.age}-year-old`)
+  if (avatar.ethnicity) parts.push(avatar.ethnicity)
+  if (avatar.gender) parts.push(avatar.gender)
+  if (avatar.style) parts.push(`${avatar.style} style`)
+  const description = parts.join(' ')
+  console.log(`Avatar description: ${description}`)
+  return description
+}
+
 async function run() {
   const account = KAGGLE_POOL[0]
   const kaggleDir = path.join(process.env.HOME, '.kaggle')
@@ -40,10 +68,11 @@ async function run() {
   const pipelineData = JSON.parse(fs.readFileSync('pipeline_data.json', 'utf8'))
   const scenesJson   = JSON.stringify(pipelineData.scenes)
 
-  // avatar_scene and avatar_lipsync both use i2v (portrait as reference frame)
-  // scene uses t2v (text-to-video only)
-  const wan21Mode = (PIPELINE_MODE === 'avatar_scene' || PIPELINE_MODE === 'avatar_lipsync') ? 'i2v' : 't2v'
-  console.log(`Wan2.1 mode: ${wan21Mode} (pipeline: ${PIPELINE_MODE})`)
+  // Get avatar description if this is an avatar job
+  let avatarDescription = ''
+  if (PIPELINE_MODE === 'avatar_scene' || PIPELINE_MODE === 'avatar_lipsync') {
+    avatarDescription = await getAvatarDescription()
+  }
 
   fs.mkdirSync('kaggle-push/wan21', { recursive: true })
 
@@ -52,8 +81,7 @@ async function run() {
     'import os',
     `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
     `os.environ["SCENES_JSON"] = ${JSON.stringify(scenesJson)}`,
-    `os.environ["WAN21_MODE"] = ${JSON.stringify(wan21Mode)}`,
-    `os.environ["AVATAR_PHOTO_URL"] = ${JSON.stringify(AVATAR_PHOTO_URL)}`,
+    `os.environ["AVATAR_DESCRIPTION"] = ${JSON.stringify(avatarDescription)}`,
     `os.environ["SUPABASE_URL"] = ${JSON.stringify(SUPABASE_URL)}`,
     `os.environ["SUPABASE_KEY"] = ${JSON.stringify(SUPABASE_KEY)}`,
     `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,
@@ -75,7 +103,6 @@ async function run() {
     kernel_type: 'script',
     is_private: true,
     enable_gpu: true,
-    
     enable_internet: true,
     dataset_sources: [],
     competition_sources: [],
@@ -87,14 +114,13 @@ async function run() {
   execSync('kaggle kernels push -p kaggle-push/wan21 --accelerator NvidiaTeslaT4', { stdio: 'inherit' })
   console.log('Kernel pushed. Waiting for clips_ready via Supabase...')
 
-  // Try polling Supabase first
   try {
     await pollSupabaseForStatus('clips_ready')
   } catch (e) {
     if (e.message.startsWith('Job failed')) throw e
     // Timed out — check R2 directly for clip_5 as fallback
     console.log('Supabase poll timed out, checking R2 for clip_5 as fallback...')
-    const clip5Url = `${R2_PUBLIC_URL}/clips/${JOB_ID}/clip_5.mp4`
+    const clip5Url = `${process.env.R2_PUBLIC_URL}/clips/${JOB_ID}/clip_5.mp4`
     try {
       const r2res = await fetch(clip5Url, { method: 'HEAD' })
       if (r2res.ok) {
