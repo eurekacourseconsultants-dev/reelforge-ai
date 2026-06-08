@@ -125,11 +125,11 @@ for i, scene in enumerate(scenes):
         f'--frame_num 33 '
         f'--ckpt_dir {ckpt_dir} '
         f'--prompt "{scene}" '
-        f'--sample_neg_prompt "{NEG_PROMPT}" '
         f'{first_frame_flag}'
         f'--offload_model True '
         f'--t5_cpu '
-        f'--sample_guide_scale 7.5 '
+        f'--sample_shift 8 '
+        f'--sample_guide_scale 6 '
         f'--save_file {output_file}'
     )
 
