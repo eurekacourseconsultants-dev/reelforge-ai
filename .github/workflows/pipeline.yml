@@ -93,16 +93,13 @@ jobs:
 
       - name: Install ffmpeg
         run: |
-          sudo apt-get install -y ffmpeg --fix-missing || true
-          sudo apt --fix-broken install -y || true
-          which ffmpeg && ffmpeg -version || (
-            echo "apt ffmpeg broken, falling back to static binary..." &&
-            wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz &&
-            tar -xf ffmpeg-release-amd64-static.tar.xz &&
-            sudo mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ &&
-            sudo mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ &&
-            echo "Static ffmpeg installed:" && ffmpeg -version
-          )
+          echo "Installing static ffmpeg (skipping apt to avoid libcaca0 bug)..."
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg-release-amd64-static.tar.xz
+          sudo mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg
+          sudo mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe
+          echo "Static ffmpeg installed:"
+          ffmpeg -version
 
       - name: Stage 3B - Stitch Clips (scene, avatar_scene, avatar_lipsync)
         if: >

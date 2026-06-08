@@ -1,0 +1,72 @@
+name: Stitch Only (Debug)
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        type: string
+
+jobs:
+  stitch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Node deps
+        run: npm ci
+
+      - name: Install ffmpeg (static binary)
+        run: |
+          echo "Installing static ffmpeg..."
+          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xf ffmpeg-release-amd64-static.tar.xz
+          sudo mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg
+          sudo mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe
+          echo "Static ffmpeg installed:"
+          ffmpeg -version
+
+      - name: Stage 3B - Stitch Clips
+        env:
+          JOB_ID:               ${{ inputs.job_id }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
+        run: node scripts/stage3b.js
+
+      - name: Stage 4 - Final Encode
+        env:
+          JOB_ID:               ${{ inputs.job_id }}
+          SUPABASE_URL:         ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID:        ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME:       ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL:        ${{ secrets.R2_PUBLIC_URL }}
+        run: node scripts/stage4.js
+
+      - name: On Failure
+        if: failure()
+        env:
+          JOB_ID:      ${{ inputs.job_id }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -X PATCH "$SUPABASE_URL/rest/v1/jobs?id=eq.$JOB_ID" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"failed","error":"Stitch failed - check Actions logs"}'
