@@ -79,27 +79,14 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
-def extract_last_frame(video_path, frame_path):
-    ret = os.system(
-        f'ffmpeg -sseof -0.1 -i {video_path} -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
-    )
-    if ret != 0 or not os.path.exists(frame_path):
-        os.system(
-            f'ffmpeg -i {video_path} -ss 00:00:00.500 -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
-        )
-    exists = os.path.exists(frame_path)
-    print(f"Last frame extracted: {frame_path} exists={exists}")
-    return exists
-
-prev_last_frame = None
-
 for i, scene in enumerate(scenes):
-    print(f"Generating clip {i+1}/{len(scenes)} [{WAN21_MODE}]: {scene[:80]}...")
+    print(f"\n=== Clip {i+1}/{len(scenes)} ===")
+    print(f"Prompt: {scene[:120]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
-    last_frame_file = f"/kaggle/working/last_frame_{i}.jpg"
 
-    # Build settings JSON for WanGP headless mode
-    # model_type must match the filename in WanGP's defaults/ folder (without .json)
+    # Pure t2v cold start for every clip — no chaining.
+    # Chaining (i2v from last frame) was causing all clips to look identical
+    # because i2v anchors too heavily to the reference frame at 1.3B scale.
     settings = {
         "type": "WanGP",
         "model_type": "t2v_1.3B",
@@ -107,28 +94,20 @@ for i, scene in enumerate(scenes):
         "negative_prompt": NEG_PROMPT,
         "width": 832,
         "height": 480,
-        "num_frames": 33,
+        "num_frames": 81,          # 81 frames = ~3.4s per clip at 24fps
         "num_inference_steps": 20,
         "guidance_scale": 6.0,
         "output_file": output_file,
     }
 
-    # Chain from previous clip's last frame if available
-    if prev_last_frame and os.path.exists(prev_last_frame):
-        settings["image"] = prev_last_frame
-        settings["model_type"] = "i2v_1.3B"
-        print(f"Chaining from: {prev_last_frame}")
-    else:
-        print(f"Clip {i+1}: cold start")
-
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
         json.dump(settings, f)
 
-    # Run WanGP in headless mode
-    # --attention sdpa: works on T4 (no flash_attn needed)
-    # --profile 4: optimal for T4 15GB VRAM
-    # --verbose 2: maximum logging so we can see progress
+    # --teacache 2.0: ~2x speedup with minimal quality loss
+    # --attention sdpa: works on T4 without flash_attn
+    # --profile 4: optimal memory profile for T4 15GB
+    # --verbose 2: maximum logging
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
         f'{sys.executable} wgp.py '
@@ -136,14 +115,15 @@ for i, scene in enumerate(scenes):
         f'--output-dir {OUTPUT_DIR} '
         f'--attention sdpa '
         f'--profile 4 '
+        f'--teacache 2.0 '
         f'--verbose 2'
     )
 
-    print(f"Running: {cmd}")
+    print(f"Running WanGP...")
     ret = os.system(cmd)
     print(f"Exit code: {ret}")
 
-    # WanGP saves output with its own naming — find the generated file
+    # WanGP may save with its own naming — find and rename if needed
     if not os.path.exists(output_file):
         mp4_files = sorted(
             [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".mp4")],
@@ -155,18 +135,15 @@ for i, scene in enumerate(scenes):
             print(f"WanGP saved as: {generated}, renaming to {output_file}")
             os.rename(generated, output_file)
         else:
-            patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed"})
+            patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed (exit {ret})"})
             raise RuntimeError(f"clip_{i}.mp4 not found in {OUTPUT_DIR}")
-
-    if extract_last_frame(output_file, last_frame_file):
-        prev_last_frame = last_frame_file
-    else:
-        print(f"WARNING: could not extract last frame from clip {i+1}, next clip cold starts")
-        prev_last_frame = None
 
     r2_key = f"clips/{JOB_ID}/clip_{i}.mp4"
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
     print(f"Uploaded clip_{i}.mp4 → R2")
+
+    # Delete local clip to free disk space for next clip
+    os.remove(output_file)
 
 for attempt in range(5):
     try:
@@ -176,4 +153,5 @@ for attempt in range(5):
     except Exception as e:
         print(f"Patch attempt {attempt+1}/5 failed: {e}")
         time.sleep(5)
+
 print("All clips generated and uploaded.")
