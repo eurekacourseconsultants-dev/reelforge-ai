@@ -104,7 +104,6 @@ for i, scene in enumerate(scenes):
     with open(settings_file, "w") as f:
         json.dump(settings, f)
 
-    # --teacache 2.0: ~2x speedup with minimal quality loss
     # --attention sdpa: works on T4 without flash_attn
     # --profile 4: optimal memory profile for T4 15GB
     # --verbose 2: maximum logging
@@ -115,7 +114,6 @@ for i, scene in enumerate(scenes):
         f'--output-dir {OUTPUT_DIR} '
         f'--attention sdpa '
         f'--profile 4 '
-        f'--teacache 2.0 '
         f'--verbose 2'
     )
 
