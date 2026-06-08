@@ -99,9 +99,10 @@ for i, scene in enumerate(scenes):
     last_frame_file = f"/kaggle/working/last_frame_{i}.jpg"
 
     # Build settings JSON for WanGP headless mode
+    # model_type must match the filename in WanGP's defaults/ folder (without .json)
     settings = {
         "type": "WanGP",
-        "model_type": "wan_t2v_1.3B",
+        "model_type": "t2v_1.3B",
         "prompt": scene,
         "negative_prompt": NEG_PROMPT,
         "width": 832,
@@ -115,7 +116,7 @@ for i, scene in enumerate(scenes):
     # Chain from previous clip's last frame if available
     if prev_last_frame and os.path.exists(prev_last_frame):
         settings["image"] = prev_last_frame
-        settings["model_type"] = "wan_i2v_1.3B"
+        settings["model_type"] = "i2v_1.3B"
         print(f"Chaining from: {prev_last_frame}")
     else:
         print(f"Clip {i+1}: cold start")
