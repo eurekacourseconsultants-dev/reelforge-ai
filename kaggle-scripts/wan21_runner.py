@@ -57,25 +57,15 @@ def patch_supabase(data):
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
-print("Installing flash_attn pre-built wheel...")
-import subprocess as _sp2, sys as _sys2
-_torch_ver = _sp2.run([_sys2.executable, "-c", "import torch; print(torch.__version__.split('+')[0])"], capture_output=True, text=True).stdout.strip()
-_maj, _min = _torch_ver.split(".")[:2]
-_torch_short = f"{_maj}.{_min}"
-_wheel = f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.0.0/flash_attn-2.6.3+cu124torch{_torch_short}-cp312-cp312-linux_x86_64.whl"
-print(f"Detected torch {_torch_short}, trying wheel: {_wheel}")
-_r = _sp2.run([_sys2.executable, "-m", "pip", "install", "-q", _wheel], capture_output=True, text=True)
-if _r.returncode != 0:
-    print(f"Pre-built wheel failed ({_r.stderr.strip()[:200]}), falling back to xformers...")
-    sp.run([sys.executable, "-m", "pip", "install", "-q", "xformers"], check=False)
-else:
-    print("flash_attn pre-built wheel installed OK")
-print("Installing Wan2.1 dependencies manually (no flash_attn)...")
-sp.run([sys.executable, "-m", "pip", "install", "-q",
-    "transformers", "accelerate", "sentencepiece",
-    "imageio", "imageio-ffmpeg", "easydict", "ftfy"
-], check=True)
-print("Dependencies installed.")
+print("Installing Wan2.1 requirements (skipping flash_attn)...")
+# Remove flash_attn from requirements to avoid 70-min compile
+import re as _re
+with open("requirements.txt", "r") as _f:
+    _reqs = _re.sub(r".*flash.attn.*\n?", "", _f.read())
+with open("requirements_noflattn.txt", "w") as _f:
+    _f.write(_reqs)
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements_noflattn.txt"], check=True)
+print("Requirements installed.")
 
 # T4 supports FlashAttention natively — no SDPA patch needed
 result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
