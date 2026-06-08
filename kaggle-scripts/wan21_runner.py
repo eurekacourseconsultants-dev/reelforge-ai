@@ -71,7 +71,9 @@ if _r.returncode != 0:
 else:
     print("flash_attn pre-built wheel installed OK")
 print("Installing Wan2.1 requirements...")
-sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt", "--no-deps"], check=False)
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt", "--no-build-isolation"], check=False)
+print("Uninstalling flash_attn to avoid T4 conflicts...")
+sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "flash_attn"], check=False)
 
 # T4 supports FlashAttention natively — no SDPA patch needed
 result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
