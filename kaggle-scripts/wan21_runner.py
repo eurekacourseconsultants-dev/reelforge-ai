@@ -118,7 +118,7 @@ for i, scene in enumerate(scenes):
     }
 
     if model_type == "fun_inp_1.3B":
-        task["image"] = avatar_image_path
+        task["image_start"] = avatar_image_path
 
     settings = [task]
 
