@@ -58,11 +58,20 @@ print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
 print("Installing flash_attn pre-built wheel...")
-sp.run([sys.executable, "-m", "pip", "install", "-q",
-    "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4/flash_attn-2.7.4+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
-], check=True)
+import subprocess as _sp2, sys as _sys2
+_torch_ver = _sp2.run([_sys2.executable, "-c", "import torch; print(torch.__version__.split('+')[0])"], capture_output=True, text=True).stdout.strip()
+_maj, _min = _torch_ver.split(".")[:2]
+_torch_short = f"{_maj}.{_min}"
+_wheel = f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.0.0/flash_attn-2.6.3+cu124torch{_torch_short}-cp312-cp312-linux_x86_64.whl"
+print(f"Detected torch {_torch_short}, trying wheel: {_wheel}")
+_r = _sp2.run([_sys2.executable, "-m", "pip", "install", "-q", _wheel], capture_output=True, text=True)
+if _r.returncode != 0:
+    print(f"Pre-built wheel failed ({_r.stderr.strip()[:200]}), falling back to xformers...")
+    sp.run([sys.executable, "-m", "pip", "install", "-q", "xformers"], check=False)
+else:
+    print("flash_attn pre-built wheel installed OK")
 print("Installing Wan2.1 requirements...")
-sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt", "--no-deps"], check=True)
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt", "--no-deps"], check=False)
 
 # T4 supports FlashAttention natively — no SDPA patch needed
 result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
