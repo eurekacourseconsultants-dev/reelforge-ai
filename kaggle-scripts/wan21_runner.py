@@ -52,12 +52,6 @@ print("Cloning WanGP...")
 sp.run(["git", "clone", "https://github.com/deepbeepmeep/Wan2GP.git", "Wan2GP"], check=True)
 os.chdir("Wan2GP")
 
-# ── Print defaults folder so we know exact valid model_type names ─────────────
-print("=== WanGP defaults folder ===")
-defaults_result = sp.run(["ls", "-1", "defaults/"], capture_output=True, text=True)
-print(defaults_result.stdout)
-print("=== end defaults ===")
-
 print("Installing WanGP requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
 print("WanGP requirements installed.")
@@ -102,9 +96,11 @@ for i, scene in enumerate(scenes):
     print(f"Prompt: {scene[:120]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
+    # fun_inp_1.3B is the correct model_type for i2v 1.3B in this WanGP build
+    # (confirmed from defaults/ folder listing in Kaggle run logs)
     if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
-        model_type = "i2v_1.3B"
-        print("i2v mode — using avatar as reference frame")
+        model_type = "fun_inp_1.3B"
+        print("i2v mode — using avatar as reference frame (fun_inp_1.3B)")
     else:
         model_type = "t2v_1.3B"
         print("t2v mode — cold start")
@@ -121,7 +117,7 @@ for i, scene in enumerate(scenes):
         "output_file": output_file,
     }
 
-    if model_type == "i2v_1.3B":
+    if model_type == "fun_inp_1.3B":
         task["image"] = avatar_image_path
 
     settings = {"tasks": [task]}
