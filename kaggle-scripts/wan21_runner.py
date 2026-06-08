@@ -128,13 +128,15 @@ for i, scene in enumerate(scenes):
     # Run WanGP in headless mode
     # --attention sdpa: works on T4 (no flash_attn needed)
     # --profile 4: optimal for T4 15GB VRAM
+    # --verbose 2: maximum logging so we can see progress
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
         f'{sys.executable} wgp.py '
         f'--process {settings_file} '
         f'--output-dir {OUTPUT_DIR} '
         f'--attention sdpa '
-        f'--profile 4'
+        f'--profile 4 '
+        f'--verbose 2'
     )
 
     print(f"Running: {cmd}")
