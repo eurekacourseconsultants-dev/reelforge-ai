@@ -5,12 +5,9 @@ import requests
 import subprocess
 import time
 
-# T4 uses the default Kaggle torch — no need to pin cu126 (that was P100-specific)
+# Install only what we need before WanGP (WanGP installs its own deps)
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "diffusers==0.31.0",
-    "transformers==4.44.2",
-    "accelerate",
     "boto3",
     "huggingface_hub",
     "Pillow"
@@ -22,8 +19,6 @@ from huggingface_hub import login
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 if HF_TOKEN:
     login(token=HF_TOKEN)
-
-from huggingface_hub import snapshot_download
 
 JOB_ID           = os.environ["JOB_ID"]
 SCENES_JSON      = os.environ["SCENES_JSON"]
@@ -54,31 +49,20 @@ def patch_supabase(data):
         json=data,
     )
 
-print("Cloning Wan2.1 inference code...")
-sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
-os.chdir("wan2.1")
-print("Installing flash_attn for torch 2.10 + Python 3.12...")
-sp.run([sys.executable, "-m", "pip", "install", "-q", "https://github.com/lesj0610/flash-attention/releases/download/v2.8.3-cu12-torch2.10-cp312/flash_attn-2.8.3+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl"], check=True)
-print("flash_attn installed.")
-print("Installing Wan2.1 requirements (skipping flash_attn)...")
-# Remove flash_attn from requirements to avoid 70-min compile
-import re as _re
-with open("requirements.txt", "r") as _f:
-    _reqs = _re.sub(r".*flash.attn.*\n?", "", _f.read())
-with open("requirements_noflattn.txt", "w") as _f:
-    _f.write(_reqs)
-sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements_noflattn.txt"], check=True)
-print("Requirements installed.")
+# ── Install WanGP ──────────────────────────────────────────────────────────────
+print("Cloning WanGP...")
+sp.run(["git", "clone", "https://github.com/deepbeepmeep/Wan2GP.git", "Wan2GP"], check=True)
+os.chdir("Wan2GP")
 
-# T4 supports FlashAttention natively — no SDPA patch needed
-result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
-print(f"FlashAttention: {result.stdout.strip() or result.stderr.strip()}")
+print("Installing WanGP requirements...")
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
+print("WanGP requirements installed.")
 
-print("Downloading Wan2.1-T2V-1.3B weights...")
-snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
-ckpt_dir = "./Wan2.1-T2V-1.3B"
-task_flag = "t2v-1.3B"
+# ── Output dir ────────────────────────────────────────────────────────────────
+OUTPUT_DIR = "/kaggle/working/outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# ── Negative prompt ───────────────────────────────────────────────────────────
 NEG_PROMPT = (
     "text, subtitles, watermark, caption, words, letters, "
     "morphing face, distorted face, blurry, low quality, "
@@ -87,6 +71,7 @@ NEG_PROMPT = (
     "worst quality, ugly, duplicate"
 )
 
+# ── R2 client ─────────────────────────────────────────────────────────────────
 s3 = boto3.client(
     "s3",
     endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
@@ -110,39 +95,65 @@ prev_last_frame = None
 
 for i, scene in enumerate(scenes):
     print(f"Generating clip {i+1}/{len(scenes)} [{WAN21_MODE}]: {scene[:80]}...")
-    output_file = f"clip_{i}.mp4"
-    last_frame_file = f"last_frame_{i}.jpg"
+    output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
+    last_frame_file = f"/kaggle/working/last_frame_{i}.jpg"
 
-    first_frame_flag = ""
+    # Build settings JSON for WanGP headless mode
+    settings = {
+        "type": "WanGP",
+        "model_type": "wan_t2v_1.3B",
+        "prompt": scene,
+        "negative_prompt": NEG_PROMPT,
+        "width": 832,
+        "height": 480,
+        "num_frames": 33,
+        "num_inference_steps": 20,
+        "guidance_scale": 6.0,
+        "output_file": output_file,
+    }
+
+    # Chain from previous clip's last frame if available
     if prev_last_frame and os.path.exists(prev_last_frame):
-        first_frame_flag = f'--first_frame {prev_last_frame} '
+        settings["image"] = prev_last_frame
+        settings["model_type"] = "wan_i2v_1.3B"
         print(f"Chaining from: {prev_last_frame}")
     else:
         print(f"Clip {i+1}: cold start")
 
+    settings_file = f"/kaggle/working/settings_{i}.json"
+    with open(settings_file, "w") as f:
+        json.dump(settings, f)
+
+    # Run WanGP in headless mode
+    # --attention sdpa: works on T4 (no flash_attn needed)
+    # --profile 4: optimal for T4 15GB VRAM
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
-        f'python generate.py '
-        f'--task {task_flag} '
-        f'--size 832*480 '
-        f'--frame_num 33 '
-        f'--ckpt_dir {ckpt_dir} '
-        f'--prompt "{scene}" '
-        f'{first_frame_flag}'
-        f'--offload_model True '
-        f'--t5_cpu '
-        f'--sample_shift 8 '
-        f'--sample_guide_scale 6 '
-        f'--save_file {output_file}'
+        f'{sys.executable} wgp.py '
+        f'--process {settings_file} '
+        f'--output-dir {OUTPUT_DIR} '
+        f'--attention sdpa '
+        f'--profile 4'
     )
 
     print(f"Running: {cmd}")
     ret = os.system(cmd)
     print(f"Exit code: {ret}")
 
+    # WanGP saves output with its own naming — find the generated file
     if not os.path.exists(output_file):
-        patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed"})
-        raise RuntimeError(f"{output_file} not found")
+        mp4_files = sorted(
+            [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".mp4")],
+            key=lambda f: os.path.getmtime(os.path.join(OUTPUT_DIR, f)),
+            reverse=True
+        )
+        if mp4_files:
+            generated = os.path.join(OUTPUT_DIR, mp4_files[0])
+            print(f"WanGP saved as: {generated}, renaming to {output_file}")
+            os.rename(generated, output_file)
+        else:
+            patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed"})
+            raise RuntimeError(f"clip_{i}.mp4 not found in {OUTPUT_DIR}")
 
     if extract_last_frame(output_file, last_frame_file):
         prev_last_frame = last_frame_file
