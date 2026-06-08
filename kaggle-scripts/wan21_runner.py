@@ -19,8 +19,7 @@ if HF_TOKEN:
 
 JOB_ID               = os.environ["JOB_ID"]
 SCENES_JSON          = os.environ["SCENES_JSON"]
-WAN21_MODE           = os.environ.get("WAN21_MODE", "t2v")
-AVATAR_PHOTO_URL     = os.environ.get("AVATAR_PHOTO_URL", "")
+AVATAR_DESCRIPTION   = os.environ.get("AVATAR_DESCRIPTION", "")  # e.g. "30-year-old Asian woman, business casual"
 SUPABASE_URL         = os.environ["SUPABASE_URL"]
 SUPABASE_KEY         = os.environ["SUPABASE_KEY"]
 R2_ACCOUNT_ID        = os.environ["R2_ACCOUNT_ID"]
@@ -34,7 +33,7 @@ scenes = json.loads(SCENES_JSON)
 import subprocess as sp
 result = sp.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
 print(f"GPU info: {result.stdout.strip()}")
-print(f"Mode: {WAN21_MODE}, Scenes: {len(scenes)}")
+print(f"Scenes: {len(scenes)}, Avatar description: {AVATAR_DESCRIPTION[:80] if AVATAR_DESCRIPTION else 'none'}")
 
 def patch_supabase(data):
     requests.patch(
@@ -77,48 +76,31 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
-# ── Download avatar photo once if i2v mode ────────────────────────────────────
-avatar_image_path = None
-if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
-    print(f"Downloading avatar photo from: {AVATAR_PHOTO_URL}")
-    avatar_image_path = "/kaggle/working/avatar.jpg"
-    r = requests.get(AVATAR_PHOTO_URL, timeout=30)
-    r.raise_for_status()
-    with open(avatar_image_path, "wb") as f:
-        f.write(r.content)
-    print(f"Avatar photo saved: {avatar_image_path}")
-else:
-    print("t2v mode — no avatar photo needed")
-
 # ── Generate clips ────────────────────────────────────────────────────────────
 for i, scene in enumerate(scenes):
     print(f"\n=== Clip {i+1}/{len(scenes)} ===")
-    print(f"Prompt: {scene[:120]}...")
+
+    # If avatar description exists, prepend it to every scene prompt
+    # so WanGP generates a consistent character in the scene
+    if AVATAR_DESCRIPTION:
+        prompt = f"{AVATAR_DESCRIPTION}, {scene}"
+    else:
+        prompt = scene
+
+    print(f"Prompt: {prompt[:150]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
-    # fun_inp_1.3B is the correct model_type for i2v 1.3B in this WanGP build
-    # (confirmed from defaults/ folder listing in Kaggle run logs)
-    if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
-        model_type = "fun_inp_1.3B"
-        print("i2v mode — using avatar as reference frame (fun_inp_1.3B)")
-    else:
-        model_type = "t2v_1.3B"
-        print("t2v mode — cold start")
-
     task = {
-        "model_type": model_type,
-        "prompt": scene,
+        "model_type": "t2v_1.3B",
+        "prompt": prompt,
         "negative_prompt": NEG_PROMPT,
         "width": 832,
         "height": 480,
-        "num_frames": 81,
-        "num_inference_steps": 20,
+        "num_frames": 49,       # 2s per clip — fast enough on T4, 6 clips = ~12s total
+        "num_inference_steps": 15,
         "guidance_scale": 6.0,
         "output_file": output_file,
     }
-
-    if model_type == "fun_inp_1.3B":
-        task["image_start"] = avatar_image_path
 
     settings = [task]
 
