@@ -73,7 +73,7 @@ NEG_PROMPT = (
     "text, subtitles, watermark, caption, words, letters, "
     "morphing face, distorted face, blurry, low quality, "
     "static, frozen, flickering, artifacts, noise, "
-    "multiple people, crowd of faces, deformed hands, "
+    "extra limbs, deformed hands, missing fingers, "
     "worst quality, ugly, duplicate"
 )
 
