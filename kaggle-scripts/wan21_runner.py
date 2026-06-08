@@ -3,17 +3,9 @@ import sys
 import json
 import requests
 import subprocess
+import time
 
-# Must pin these exact versions for P100 (sm_60 Pascal) compatibility:
-# - torch 2.6.0+cu126: last build with sm_60 support
-# - diffusers 0.31.0: required by Wan2.1
-# - transformers 4.44.2: FLAX_WEIGHTS_NAME removed in 4.45+, breaks diffusers 0.31.0
-subprocess.run([
-    sys.executable, "-m", "pip", "install", "-q",
-    "torch==2.6.0+cu126", "torchvision", "torchaudio",
-    "--index-url", "https://download.pytorch.org/whl/cu126"
-], check=True)
-
+# T4 uses the default Kaggle torch — no need to pin cu126 (that was P100-specific)
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
     "diffusers==0.31.0",
@@ -35,7 +27,7 @@ from huggingface_hub import snapshot_download
 
 JOB_ID           = os.environ["JOB_ID"]
 SCENES_JSON      = os.environ["SCENES_JSON"]
-WAN21_MODE       = os.environ.get("WAN21_MODE", "t2v")  # "t2v" or "i2v"
+WAN21_MODE       = os.environ.get("WAN21_MODE", "t2v")
 AVATAR_PHOTO_URL = os.environ.get("AVATAR_PHOTO_URL", "")
 SUPABASE_URL     = os.environ["SUPABASE_URL"]
 SUPABASE_KEY     = os.environ["SUPABASE_KEY"]
@@ -46,6 +38,10 @@ R2_BUCKET_NAME   = os.environ["R2_BUCKET_NAME"]
 R2_PUBLIC_URL    = os.environ["R2_PUBLIC_URL"]
 
 scenes = json.loads(SCENES_JSON)
+
+import subprocess as sp
+result = sp.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
+print(f"GPU info: {result.stdout.strip()}")
 
 def patch_supabase(data):
     requests.patch(
@@ -58,60 +54,28 @@ def patch_supabase(data):
         json=data,
     )
 
-import subprocess as sp
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
 print("Installing Wan2.1 requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
-# Uninstall flash_attn — not supported on P100 (sm_60, Pascal).
-sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "flash_attn", "flash_attn_interface"], check=False)
 
-# Patch attention.py to use torch SDPA fallback instead of asserting flash_attn is available.
-attention_patch = """
-import torch
-import warnings
-
-FLASH_ATTN_3_AVAILABLE = False
-FLASH_ATTN_2_AVAILABLE = False
-
-__all__ = ['flash_attention', 'attention']
-
-def flash_attention(q, k, v, q_lens=None, k_lens=None, dropout_p=0., softmax_scale=None,
-                    q_scale=None, causal=False, window_size=(-1, -1), deterministic=False,
-                    dtype=torch.bfloat16, version=None):
-    half_dtypes = (torch.float16, torch.bfloat16)
-    assert dtype in half_dtypes
-    b, lq, lk, out_dtype = q.size(0), q.size(1), k.size(1), q.dtype
-    def half(x):
-        return x if x.dtype in half_dtypes else x.to(dtype)
-    if q_lens is not None or k_lens is not None:
-        warnings.warn('Padding mask is disabled when using scaled_dot_product_attention.')
-    q = half(q).transpose(1, 2)
-    k = half(k).transpose(1, 2)
-    v = half(v).transpose(1, 2)
-    if q_scale is not None:
-        q = q * q_scale
-    out = torch.nn.functional.scaled_dot_product_attention(
-        q, k, v, is_causal=causal, dropout_p=dropout_p)
-    return out.transpose(1, 2).contiguous().type(out_dtype)
-
-def attention(q, k, v, q_lens=None, k_lens=None, dropout_p=0., softmax_scale=None,
-              q_scale=None, causal=False, window_size=(-1, -1), deterministic=False,
-              dtype=torch.bfloat16, fa_version=None):
-    return flash_attention(q=q, k=k, v=v, q_lens=q_lens, k_lens=k_lens,
-                           dropout_p=dropout_p, softmax_scale=softmax_scale,
-                           q_scale=q_scale, causal=causal, window_size=window_size,
-                           deterministic=deterministic, dtype=dtype, version=fa_version)
-"""
-with open("wan/modules/attention.py", "w") as f:
-    f.write(attention_patch)
-print("Patched attention.py with SDPA fallback")
+# T4 supports FlashAttention natively — no SDPA patch needed
+result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
+print(f"FlashAttention: {result.stdout.strip() or result.stderr.strip()}")
 
 print("Downloading Wan2.1-T2V-1.3B weights...")
 snapshot_download("Wan-AI/Wan2.1-T2V-1.3B", local_dir="./Wan2.1-T2V-1.3B")
 ckpt_dir = "./Wan2.1-T2V-1.3B"
 task_flag = "t2v-1.3B"
+
+NEG_PROMPT = (
+    "text, subtitles, watermark, caption, words, letters, "
+    "morphing face, distorted face, blurry, low quality, "
+    "static, frozen, flickering, artifacts, noise, "
+    "multiple people, crowd of faces, deformed hands, "
+    "worst quality, ugly, duplicate"
+)
 
 s3 = boto3.client(
     "s3",
@@ -121,12 +85,10 @@ s3 = boto3.client(
 )
 
 def extract_last_frame(video_path, frame_path):
-    """Extract the last frame of a video as a jpg for use as first_frame of the next clip."""
     ret = os.system(
         f'ffmpeg -sseof -0.1 -i {video_path} -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
     )
     if ret != 0 or not os.path.exists(frame_path):
-        # fallback: grab frame at 0.5s
         os.system(
             f'ffmpeg -i {video_path} -ss 00:00:00.500 -frames:v 1 -q:v 2 {frame_path} -y 2>/dev/null'
         )
@@ -134,32 +96,33 @@ def extract_last_frame(video_path, frame_path):
     print(f"Last frame extracted: {frame_path} exists={exists}")
     return exists
 
-prev_last_frame = None  # path to last frame of previous clip, None for first clip
+prev_last_frame = None
 
 for i, scene in enumerate(scenes):
     print(f"Generating clip {i+1}/{len(scenes)} [{WAN21_MODE}]: {scene[:80]}...")
     output_file = f"clip_{i}.mp4"
     last_frame_file = f"last_frame_{i}.jpg"
 
-    # Build first_frame flag — chain from previous clip's last frame for continuity
     first_frame_flag = ""
     if prev_last_frame and os.path.exists(prev_last_frame):
         first_frame_flag = f'--first_frame {prev_last_frame} '
-        print(f"Chaining from previous clip last frame: {prev_last_frame}")
+        print(f"Chaining from: {prev_last_frame}")
     else:
-        print(f"Clip {i+1}: no previous frame to chain from, cold start")
+        print(f"Clip {i+1}: cold start")
 
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
         f'python generate.py '
         f'--task {task_flag} '
         f'--size 832*480 '
-        f'--frame_num 16 '
+        f'--frame_num 33 '
         f'--ckpt_dir {ckpt_dir} '
         f'--prompt "{scene}" '
+        f'--sample_neg_prompt "{NEG_PROMPT}" '
         f'{first_frame_flag}'
         f'--offload_model True '
         f'--t5_cpu '
+        f'--sample_guide_scale 7.5 '
         f'--save_file {output_file}'
     )
 
@@ -171,18 +134,16 @@ for i, scene in enumerate(scenes):
         patch_supabase({"status": "failed", "error": f"Clip {i+1} generation failed"})
         raise RuntimeError(f"{output_file} not found")
 
-    # Extract last frame for next clip to chain from
     if extract_last_frame(output_file, last_frame_file):
         prev_last_frame = last_frame_file
     else:
-        print(f"WARNING: could not extract last frame from clip {i+1}, next clip will cold start")
+        print(f"WARNING: could not extract last frame from clip {i+1}, next clip cold starts")
         prev_last_frame = None
 
     r2_key = f"clips/{JOB_ID}/clip_{i}.mp4"
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
     print(f"Uploaded clip_{i}.mp4 → R2")
 
-import time
 for attempt in range(5):
     try:
         patch_supabase({"status": "clips_ready"})
