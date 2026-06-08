@@ -24,15 +24,20 @@ jobs:
       - name: Install Node deps
         run: npm ci
 
-      - name: Install ffmpeg (static binary)
+      - name: Install ffmpeg
         run: |
-          echo "Installing static ffmpeg..."
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-          tar -xf ffmpeg-release-amd64-static.tar.xz
-          sudo mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg
-          sudo mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe
-          echo "Static ffmpeg installed:"
-          ffmpeg -version
+          sudo apt-get install -y ffmpeg --fix-missing || true
+          sudo apt-get install -y libcaca0 --fix-missing || true
+          sudo apt --fix-broken install -y || true
+          ffmpeg -version && echo "ffmpeg OK" || (
+            echo "apt ffmpeg broken, trying BtbN static build..." &&
+            wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz &&
+            tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz &&
+            sudo mv ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg &&
+            sudo mv ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe &&
+            echo "Static ffmpeg installed:" &&
+            ffmpeg -version
+          )
 
       - name: Stage 3B - Stitch Clips
         env:
