@@ -87,7 +87,25 @@ async function run() {
   execSync('kaggle kernels push -p kaggle-push/wan21 --accelerator NvidiaTeslaT4', { stdio: 'inherit' })
   console.log('Kernel pushed. Waiting for clips_ready via Supabase...')
 
-  await pollSupabaseForStatus('clips_ready')
+  // Try polling Supabase first
+  try {
+    await pollSupabaseForStatus('clips_ready')
+  } catch (e) {
+    if (e.message.startsWith('Job failed')) throw e
+    // Timed out — check R2 directly for clip_5 as fallback
+    console.log('Supabase poll timed out, checking R2 for clip_5 as fallback...')
+    const clip5Url = `${R2_PUBLIC_URL}/clips/${JOB_ID}/clip_5.mp4`
+    try {
+      const r2res = await fetch(clip5Url, { method: 'HEAD' })
+      if (r2res.ok) {
+        console.log('clip_5.mp4 found in R2 — treating as clips_ready')
+      } else {
+        throw new Error('clip_5.mp4 not found in R2 after timeout')
+      }
+    } catch (r2err) {
+      throw new Error(`Timed out and R2 fallback failed: ${r2err.message}`)
+    }
+  }
   console.log('Stage 2B complete.')
 }
 

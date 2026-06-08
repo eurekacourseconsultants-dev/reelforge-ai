@@ -182,5 +182,13 @@ for i, scene in enumerate(scenes):
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
     print(f"Uploaded clip_{i}.mp4 → R2")
 
-patch_supabase({"status": "clips_ready"})
+import time
+for attempt in range(5):
+    try:
+        patch_supabase({"status": "clips_ready"})
+        print("Status patched: clips_ready")
+        break
+    except Exception as e:
+        print(f"Patch attempt {attempt+1}/5 failed: {e}")
+        time.sleep(5)
 print("All clips generated and uploaded.")
