@@ -120,7 +120,7 @@ for i, scene in enumerate(scenes):
     if model_type == "fun_inp_1.3B":
         task["image"] = avatar_image_path
 
-    settings = {"tasks": [task]}
+    settings = [task]
 
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
