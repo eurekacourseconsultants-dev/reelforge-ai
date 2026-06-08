@@ -5,12 +5,9 @@ import requests
 import subprocess
 import time
 
-# Install only what we need before WanGP (WanGP installs its own deps)
 subprocess.run([
     sys.executable, "-m", "pip", "install", "-q",
-    "boto3",
-    "huggingface_hub",
-    "Pillow"
+    "boto3", "huggingface_hub", "Pillow"
 ], check=True)
 
 import boto3
@@ -20,23 +17,24 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "")
 if HF_TOKEN:
     login(token=HF_TOKEN)
 
-JOB_ID           = os.environ["JOB_ID"]
-SCENES_JSON      = os.environ["SCENES_JSON"]
-WAN21_MODE       = os.environ.get("WAN21_MODE", "t2v")
-AVATAR_PHOTO_URL = os.environ.get("AVATAR_PHOTO_URL", "")
-SUPABASE_URL     = os.environ["SUPABASE_URL"]
-SUPABASE_KEY     = os.environ["SUPABASE_KEY"]
+JOB_ID               = os.environ["JOB_ID"]
+SCENES_JSON          = os.environ["SCENES_JSON"]
+WAN21_MODE           = os.environ.get("WAN21_MODE", "t2v")
+AVATAR_PHOTO_URL     = os.environ.get("AVATAR_PHOTO_URL", "")
+SUPABASE_URL         = os.environ["SUPABASE_URL"]
+SUPABASE_KEY         = os.environ["SUPABASE_KEY"]
 R2_ACCOUNT_ID        = os.environ["R2_ACCOUNT_ID"]
 R2_ACCESS_KEY_ID     = os.environ["R2_ACCESS_KEY_ID"]
 R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
-R2_BUCKET_NAME   = os.environ["R2_BUCKET_NAME"]
-R2_PUBLIC_URL    = os.environ["R2_PUBLIC_URL"]
+R2_BUCKET_NAME       = os.environ["R2_BUCKET_NAME"]
+R2_PUBLIC_URL        = os.environ["R2_PUBLIC_URL"]
 
 scenes = json.loads(SCENES_JSON)
 
 import subprocess as sp
 result = sp.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
 print(f"GPU info: {result.stdout.strip()}")
+print(f"Mode: {WAN21_MODE}, Scenes: {len(scenes)}")
 
 def patch_supabase(data):
     requests.patch(
@@ -79,34 +77,51 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
+# ── Download avatar photo once if i2v mode ────────────────────────────────────
+avatar_image_path = None
+if WAN21_MODE == "i2v" and AVATAR_PHOTO_URL:
+    print(f"Downloading avatar photo from: {AVATAR_PHOTO_URL}")
+    avatar_image_path = "/kaggle/working/avatar.jpg"
+    r = requests.get(AVATAR_PHOTO_URL, timeout=30)
+    r.raise_for_status()
+    with open(avatar_image_path, "wb") as f:
+        f.write(r.content)
+    print(f"Avatar photo saved: {avatar_image_path}")
+else:
+    print("t2v mode — no avatar photo needed")
+
+# ── Generate clips ────────────────────────────────────────────────────────────
 for i, scene in enumerate(scenes):
     print(f"\n=== Clip {i+1}/{len(scenes)} ===")
     print(f"Prompt: {scene[:120]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
-    # Pure t2v cold start for every clip — no chaining.
-    # Chaining (i2v from last frame) was causing all clips to look identical
-    # because i2v anchors too heavily to the reference frame at 1.3B scale.
     settings = {
         "type": "WanGP",
-        "model_type": "t2v_1.3B",
         "prompt": scene,
         "negative_prompt": NEG_PROMPT,
         "width": 832,
         "height": 480,
-        "num_frames": 81,          # 81 frames = ~3.4s per clip at 24fps
+        "num_frames": 81,
         "num_inference_steps": 20,
         "guidance_scale": 6.0,
         "output_file": output_file,
     }
 
+    if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
+        # i2v: avatar photo as reference frame — consistent appearance across all clips
+        # Each clip cold-starts from the same avatar image (no chaining between clips)
+        settings["model_type"] = "i2v_1.3B"
+        settings["image"] = avatar_image_path
+        print(f"i2v mode — using avatar as reference frame")
+    else:
+        settings["model_type"] = "t2v_1.3B"
+        print(f"t2v mode — cold start")
+
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
         json.dump(settings, f)
 
-    # --attention sdpa: works on T4 without flash_attn
-    # --profile 4: optimal memory profile for T4 15GB
-    # --verbose 2: maximum logging
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
         f'{sys.executable} wgp.py '
@@ -121,7 +136,6 @@ for i, scene in enumerate(scenes):
     ret = os.system(cmd)
     print(f"Exit code: {ret}")
 
-    # WanGP may save with its own naming — find and rename if needed
     if not os.path.exists(output_file):
         mp4_files = sorted(
             [f for f in os.listdir(OUTPUT_DIR) if f.endswith(".mp4")],
@@ -140,7 +154,6 @@ for i, scene in enumerate(scenes):
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
     print(f"Uploaded clip_{i}.mp4 → R2")
 
-    # Delete local clip to free disk space for next clip
     os.remove(output_file)
 
 for attempt in range(5):
