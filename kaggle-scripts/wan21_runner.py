@@ -57,8 +57,12 @@ def patch_supabase(data):
 print("Cloning Wan2.1 inference code...")
 sp.run(["git", "clone", "https://github.com/Wan-Video/Wan2.1.git", "wan2.1"], check=True)
 os.chdir("wan2.1")
+print("Installing flash_attn pre-built wheel...")
+sp.run([sys.executable, "-m", "pip", "install", "-q",
+    "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4/flash_attn-2.7.4+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl"
+], check=True)
 print("Installing Wan2.1 requirements...")
-sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
+sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt", "--no-deps"], check=True)
 
 # T4 supports FlashAttention natively — no SDPA patch needed
 result = sp.run([sys.executable, "-c", "import flash_attn; print('flash_attn OK')"], capture_output=True, text=True)
