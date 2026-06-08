@@ -52,6 +52,12 @@ print("Cloning WanGP...")
 sp.run(["git", "clone", "https://github.com/deepbeepmeep/Wan2GP.git", "Wan2GP"], check=True)
 os.chdir("Wan2GP")
 
+# ── Print defaults folder so we know exact valid model_type names ─────────────
+print("=== WanGP defaults folder ===")
+defaults_result = sp.run(["ls", "-1", "defaults/"], capture_output=True, text=True)
+print(defaults_result.stdout)
+print("=== end defaults ===")
+
 print("Installing WanGP requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
 print("WanGP requirements installed.")
@@ -96,7 +102,6 @@ for i, scene in enumerate(scenes):
     print(f"Prompt: {scene[:120]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
-    # Determine model_type
     if WAN21_MODE == "i2v" and avatar_image_path and os.path.exists(avatar_image_path):
         model_type = "i2v_1.3B"
         print("i2v mode — using avatar as reference frame")
@@ -104,9 +109,6 @@ for i, scene in enumerate(scenes):
         model_type = "t2v_1.3B"
         print("t2v mode — cold start")
 
-    # WanGP --process expects a JSON with a "tasks" array.
-    # Each task must have "model_type" matching a filename in WanGP's defaults/ folder.
-    # The "type" key at the top level is NOT used — model_type inside the task is what matters.
     task = {
         "model_type": model_type,
         "prompt": scene,
@@ -119,19 +121,14 @@ for i, scene in enumerate(scenes):
         "output_file": output_file,
     }
 
-    # Add image reference for i2v
     if model_type == "i2v_1.3B":
         task["image"] = avatar_image_path
 
-    # Wrap in tasks array — this is the required WanGP headless format
     settings = {"tasks": [task]}
 
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
         json.dump(settings, f)
-
-    # Print the settings for debugging
-    print(f"Settings JSON: {json.dumps(settings, indent=2)[:300]}")
 
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
@@ -164,7 +161,6 @@ for i, scene in enumerate(scenes):
     r2_key = f"clips/{JOB_ID}/clip_{i}.mp4"
     s3.upload_file(output_file, R2_BUCKET_NAME, r2_key)
     print(f"Uploaded clip_{i}.mp4 → R2")
-
     os.remove(output_file)
 
 for attempt in range(5):
