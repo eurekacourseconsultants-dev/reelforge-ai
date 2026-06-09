@@ -1,7 +1,7 @@
 """
 wan21_modal.py — Wan2.1 video generation on Modal A10G
 Handles Pipeline 1 (t2v, no avatar) and Pipeline 2 (i2v, avatar no speech)
-Triggered by stage2b_modal.js via GitHub Actions
+Triggered by stage2b_modal.mjs via GitHub Actions
 """
 
 import modal
@@ -177,14 +177,17 @@ def generate_clip(
 @app.local_entrypoint()
 def main(
     job_id: str,
-    prompts_json: str,
+    prompts_file: str,
     mode: str = "t2v",
     avatar_photo_url: str = "",
 ):
     import json
     from supabase import create_client
 
-    prompts = json.loads(prompts_json)
+    # Read prompts from file — no shell quoting issues, handles apostrophes safely
+    with open(prompts_file, "r") as f:
+        prompts = json.load(f)
+
     print(f"Generating {len(prompts)} clips for job {job_id}, mode={mode}")
 
     supabase = create_client(

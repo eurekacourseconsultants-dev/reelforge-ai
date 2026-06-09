@@ -23,9 +23,11 @@ async function main() {
   // Read pipeline_data.json written by stage1.js
   const pipelineData = JSON.parse(fs.readFileSync("pipeline_data.json", "utf8"));
   const prompts = pipelineData.scenes;
-  const mode = pipelineData.pipeline_mode === "avatar_scene" || pipelineData.pipeline_mode === "avatar_lipsync"
-    ? "i2v"
-    : "t2v";
+  const mode =
+    pipelineData.pipeline_mode === "avatar_scene" ||
+    pipelineData.pipeline_mode === "avatar_lipsync"
+      ? "i2v"
+      : "t2v";
   const avatarPhotoUrl = pipelineData.avatar_photo_url || "";
 
   console.log(`[stage2b_modal] mode=${mode}, ${prompts.length} prompts loaded from stage1`);
@@ -35,15 +37,21 @@ async function main() {
     .update({ scene_prompts: JSON.stringify(prompts) })
     .eq("id", JOB_ID);
 
-  const cmd = [
+  // Write prompts to file — avoids ALL shell quoting/apostrophe issues
+  const promptsFile = "prompts.json";
+  fs.writeFileSync(promptsFile, JSON.stringify(prompts));
+  console.log(`[stage2b_modal] Prompts written to ${promptsFile}`);
+
+  const cmdParts = [
     "modal run modal-scripts/wan21_modal.py",
     `--job-id "${JOB_ID}"`,
-    `--prompts-json '${JSON.stringify(prompts)}'`,
+    `--prompts-file "${promptsFile}"`,
     `--mode "${mode}"`,
-    avatarPhotoUrl ? `--avatar-photo-url "${avatarPhotoUrl}"` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ];
+  if (avatarPhotoUrl) {
+    cmdParts.push(`--avatar-photo-url "${avatarPhotoUrl}"`);
+  }
+  const cmd = cmdParts.join(" ");
 
   console.log(`[stage2b_modal] Running: ${cmd}`);
   execSync(cmd, { stdio: "inherit", env: process.env });
