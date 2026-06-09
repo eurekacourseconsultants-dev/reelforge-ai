@@ -2,10 +2,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { execSync } from "child_process";
 import fs from "fs";
+import ws from "ws";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { realtime: { transport: ws } }
 );
 
 const JOB_ID = process.env.JOB_ID;
