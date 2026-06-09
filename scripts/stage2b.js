@@ -30,33 +30,36 @@ async function pollSupabaseForStatus(targetStatus) {
   throw new Error(`Timed out waiting for ${targetStatus}`)
 }
 
-async function getAvatarDescription() {
-  // Fetch the job to get avatar_id
+async function getAvatarData() {
+  // Fetch job to get avatar_id
   const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/jobs?id=eq.${JOB_ID}&select=avatar_id`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
   })
   const jobData = await jobRes.json()
   const avatarId = jobData[0]?.avatar_id
-  if (!avatarId) return ''
+  if (!avatarId) return { description: '', photoUrl: '' }
 
-  // Fetch avatar details
-  const avatarRes = await fetch(`${SUPABASE_URL}/rest/v1/avatars?id=eq.${avatarId}&select=gender,age,ethnicity,style`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-  })
+  // Fetch avatar details including photo_url for i2v
+  const avatarRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/avatars?id=eq.${avatarId}&select=gender,age,ethnicity,style,photo_url`,
+    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+  )
   const avatarData = await avatarRes.json()
   const avatar = avatarData[0]
-  if (!avatar) return ''
+  if (!avatar) return { description: '', photoUrl: '' }
 
-  // Build a natural description to prepend to every scene prompt
-  // e.g. "30-year-old East Asian woman, business casual style"
+  // Build text description to prepend to every scene prompt
   const parts = []
   if (avatar.age) parts.push(`${avatar.age}-year-old`)
   if (avatar.ethnicity) parts.push(avatar.ethnicity)
   if (avatar.gender) parts.push(avatar.gender)
   if (avatar.style) parts.push(`${avatar.style} style`)
   const description = parts.join(' ')
+
   console.log(`Avatar description: ${description}`)
-  return description
+  console.log(`Avatar photo URL: ${avatar.photo_url || 'none'}`)
+
+  return { description, photoUrl: avatar.photo_url || '' }
 }
 
 async function run() {
@@ -68,11 +71,18 @@ async function run() {
   const pipelineData = JSON.parse(fs.readFileSync('pipeline_data.json', 'utf8'))
   const scenesJson   = JSON.stringify(pipelineData.scenes)
 
-  // Get avatar description if this is an avatar job
+  // Fetch avatar data for avatar pipelines
   let avatarDescription = ''
+  let avatarPhotoUrl = ''
   if (PIPELINE_MODE === 'avatar_scene' || PIPELINE_MODE === 'avatar_lipsync') {
-    avatarDescription = await getAvatarDescription()
+    const avatarData = await getAvatarData()
+    avatarDescription = avatarData.description
+    avatarPhotoUrl = avatarData.photoUrl
   }
+
+  // Log mode clearly
+  console.log(`Pipeline mode: ${PIPELINE_MODE}`)
+  console.log(`Using i2v: ${avatarPhotoUrl ? 'YES (avatar photo reference)' : 'NO (t2v text only)'}`)
 
   fs.mkdirSync('kaggle-push/wan21', { recursive: true })
 
@@ -82,6 +92,7 @@ async function run() {
     `os.environ["JOB_ID"] = ${JSON.stringify(JOB_ID)}`,
     `os.environ["SCENES_JSON"] = ${JSON.stringify(scenesJson)}`,
     `os.environ["AVATAR_DESCRIPTION"] = ${JSON.stringify(avatarDescription)}`,
+    `os.environ["AVATAR_PHOTO_URL"] = ${JSON.stringify(avatarPhotoUrl)}`,
     `os.environ["SUPABASE_URL"] = ${JSON.stringify(SUPABASE_URL)}`,
     `os.environ["SUPABASE_KEY"] = ${JSON.stringify(SUPABASE_KEY)}`,
     `os.environ["R2_ACCOUNT_ID"] = ${JSON.stringify(process.env.R2_ACCOUNT_ID)}`,

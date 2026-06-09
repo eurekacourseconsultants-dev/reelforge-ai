@@ -19,7 +19,8 @@ if HF_TOKEN:
 
 JOB_ID               = os.environ["JOB_ID"]
 SCENES_JSON          = os.environ["SCENES_JSON"]
-AVATAR_DESCRIPTION   = os.environ.get("AVATAR_DESCRIPTION", "")  # e.g. "30-year-old Asian woman, business casual"
+AVATAR_DESCRIPTION   = os.environ.get("AVATAR_DESCRIPTION", "")
+AVATAR_PHOTO_URL     = os.environ.get("AVATAR_PHOTO_URL", "")   # set for avatar_scene / avatar_lipsync
 SUPABASE_URL         = os.environ["SUPABASE_URL"]
 SUPABASE_KEY         = os.environ["SUPABASE_KEY"]
 R2_ACCOUNT_ID        = os.environ["R2_ACCOUNT_ID"]
@@ -33,6 +34,10 @@ scenes = json.loads(SCENES_JSON)
 import subprocess as sp
 result = sp.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True, text=True)
 print(f"GPU info: {result.stdout.strip()}")
+
+# Decide mode up front so it's clear in logs
+USE_I2V = bool(AVATAR_PHOTO_URL)
+print(f"Mode: {'i2v (avatar photo reference)' if USE_I2V else 't2v (text only)'}")
 print(f"Scenes: {len(scenes)}, Avatar description: {AVATAR_DESCRIPTION[:80] if AVATAR_DESCRIPTION else 'none'}")
 
 def patch_supabase(data):
@@ -54,6 +59,16 @@ os.chdir("Wan2GP")
 print("Installing WanGP requirements...")
 sp.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"], check=True)
 print("WanGP requirements installed.")
+
+# ── Download avatar photo if i2v mode ─────────────────────────────────────────
+AVATAR_IMAGE_PATH = None
+if USE_I2V:
+    print(f"Downloading avatar photo from {AVATAR_PHOTO_URL}...")
+    r = requests.get(AVATAR_PHOTO_URL, timeout=30)
+    AVATAR_IMAGE_PATH = "/kaggle/working/avatar.jpg"
+    with open(AVATAR_IMAGE_PATH, "wb") as f:
+        f.write(r.content)
+    print(f"Avatar photo saved: {os.path.getsize(AVATAR_IMAGE_PATH)} bytes")
 
 # ── Output dir ────────────────────────────────────────────────────────────────
 OUTPUT_DIR = "/kaggle/working/outputs"
@@ -80,8 +95,7 @@ s3 = boto3.client(
 for i, scene in enumerate(scenes):
     print(f"\n=== Clip {i+1}/{len(scenes)} ===")
 
-    # If avatar description exists, prepend it to every scene prompt
-    # so WanGP generates a consistent character in the scene
+    # Always prepend avatar description to anchor the character appearance
     if AVATAR_DESCRIPTION:
         prompt = f"{AVATAR_DESCRIPTION}, {scene}"
     else:
@@ -90,23 +104,39 @@ for i, scene in enumerate(scenes):
     print(f"Prompt: {prompt[:150]}...")
     output_file = os.path.join(OUTPUT_DIR, f"clip_{i}.mp4")
 
-    task = {
-        "model_type": "t2v_1.3B",
-        "prompt": prompt,
-        "negative_prompt": NEG_PROMPT,
-        "width": 832,
-        "height": 480,
-        "num_frames": 49,       # 2s per clip — fast enough on T4, 6 clips = ~12s total
-        "num_inference_steps": 15,
-        "guidance_scale": 6.0,
-        "output_file": output_file,
-    }
-
-    settings = [task]
+    if USE_I2V:
+        # i2v_1.3B: uses avatar photo as the start frame reference,
+        # generating a scene with that character in it.
+        # image_start is the confirmed field name from wgp.py validate_settings.
+        task = {
+            "model_type": "i2v_1.3B",
+            "prompt": prompt,
+            "negative_prompt": NEG_PROMPT,
+            "image_start": AVATAR_IMAGE_PATH,
+            "width": 832,
+            "height": 480,
+            "num_frames": 49,
+            "num_inference_steps": 15,
+            "guidance_scale": 6.0,
+            "output_file": output_file,
+        }
+    else:
+        # t2v: pure scene generation, no avatar reference
+        task = {
+            "model_type": "t2v_1.3B",
+            "prompt": prompt,
+            "negative_prompt": NEG_PROMPT,
+            "width": 832,
+            "height": 480,
+            "num_frames": 49,
+            "num_inference_steps": 15,
+            "guidance_scale": 6.0,
+            "output_file": output_file,
+        }
 
     settings_file = f"/kaggle/working/settings_{i}.json"
     with open(settings_file, "w") as f:
-        json.dump(settings, f)
+        json.dump([task], f)
 
     cmd = (
         f'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True '
@@ -118,7 +148,7 @@ for i, scene in enumerate(scenes):
         f'--verbose 2'
     )
 
-    print(f"Running WanGP...")
+    print(f"Running WanGP ({'i2v' if USE_I2V else 't2v'})...")
     ret = os.system(cmd)
     print(f"Exit code: {ret}")
 
