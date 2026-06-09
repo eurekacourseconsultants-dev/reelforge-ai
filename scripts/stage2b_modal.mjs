@@ -1,4 +1,4 @@
-// stage2b_modal.js
+// stage2b_modal.mjs
 import { createClient } from "@supabase/supabase-js";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -30,7 +30,6 @@ async function main() {
 
   console.log(`[stage2b_modal] mode=${mode}, ${prompts.length} prompts loaded from stage1`);
 
-  // Store prompts on job for downstream stages
   await supabase
     .from("jobs")
     .update({ scene_prompts: JSON.stringify(prompts) })

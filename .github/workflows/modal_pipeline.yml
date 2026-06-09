@@ -76,7 +76,7 @@ jobs:
 
       - name: Stage 2B Modal — Generate clips (Pipeline 1 & 2)
         if: ${{ github.event.inputs.pipeline_mode == 'scene' || github.event.inputs.pipeline_mode == 'avatar_scene' }}
-        run: node scripts/stage2b_modal.js
+        run: node scripts/stage2b_modal.mjs
 
       - name: Stage 3B — Stitch clips (Pipeline 1 & 2)
         if: ${{ github.event.inputs.pipeline_mode == 'scene' || github.event.inputs.pipeline_mode == 'avatar_scene' }}
@@ -94,7 +94,7 @@ jobs:
 
       - name: Stage 2B Modal — Generate scene clips (Pipeline 3)
         if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
-        run: node scripts/stage2b_modal.js
+        run: node scripts/stage2b_modal.mjs
 
       - name: Stage 3B — Stitch scene clips (Pipeline 3)
         if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
