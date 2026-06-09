@@ -31,6 +31,8 @@ image = (
         "ftfy",
         "requests",
         "supabase",
+        "imageio",
+        "imageio-ffmpeg",
     )
     .run_commands("apt-get update && apt-get install -y ffmpeg")
 )
@@ -95,15 +97,10 @@ def generate_clip(
     mode: str = "t2v",           # "t2v" or "i2v"
     avatar_photo_url: str = "",  # only used in i2v mode
 ):
-    """
-    Generate a single 5-second clip.
-    Returns the R2 public URL of the uploaded clip.
-    """
     import torch
     import boto3
     import requests
     import tempfile
-    import subprocess
     from pathlib import Path
     from PIL import Image
 
@@ -122,7 +119,6 @@ def generate_clip(
         )
         pipe.enable_model_cpu_offload()
 
-        # Download avatar image
         print(f"[Clip {clip_index}] Downloading avatar from {avatar_photo_url}")
         img_response = requests.get(avatar_photo_url, timeout=30)
         img_response.raise_for_status()
@@ -131,13 +127,13 @@ def generate_clip(
             avatar_path = f.name
 
         image = Image.open(avatar_path).convert("RGB")
-        image = image.resize((832, 480))  # 480P landscape
+        image = image.resize((832, 480))
 
         print(f"[Clip {clip_index}] Running I2V inference...")
         output = pipe(
             image=image,
             prompt=prompt,
-            num_frames=81,           # ~5s at 16fps
+            num_frames=81,
             num_inference_steps=50,
             guidance_scale=5.0,
         )
@@ -161,7 +157,8 @@ def generate_clip(
             width=832,
         )
 
-    # ── Export to temp file ──
+    # ── Export to temp file using imageio backend ──
+    import imageio
     from diffusers.utils import export_to_video
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         tmp_path = f.name
@@ -195,10 +192,6 @@ def main(
     mode: str = "t2v",
     avatar_photo_url: str = "",
 ):
-    """
-    Called via: modal run wan21_modal.py --job-id X --prompts-json '[...]' --mode t2v
-    Spawns all 6 clips in parallel, patches Supabase when done.
-    """
     import json
     import os
     from supabase import create_client
@@ -206,14 +199,12 @@ def main(
     prompts = json.loads(prompts_json)
     print(f"Generating {len(prompts)} clips for job {job_id}, mode={mode}")
 
-    # Patch status to processing
     supabase = create_client(
         os.environ["NEXT_PUBLIC_SUPABASE_URL"],
         os.environ["SUPABASE_SERVICE_ROLE_KEY"],
     )
     supabase.table("jobs").update({"status": "generating_clips"}).eq("id", job_id).execute()
 
-    # Run all clips in parallel via Modal's .map()
     results = list(
         generate_clip.starmap(
             [
@@ -225,7 +216,6 @@ def main(
 
     print(f"All clips done: {results}")
 
-    # Store clip URLs on job row
     supabase.table("jobs").update({
         "status": "clips_ready",
         "clip_urls": json.dumps(results),
