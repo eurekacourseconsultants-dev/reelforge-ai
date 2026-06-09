@@ -36,7 +36,7 @@ export async function POST(request) {
         prompt,
         avatar_id: avatar_id || null,
         pipeline_mode,
-        backend, // store which backend was used
+        backend,
         status: "pending",
       })
       .select()
@@ -48,6 +48,17 @@ export async function POST(request) {
     const repoOwner = process.env.GH_REPO_OWNER || process.env.GITHUB_REPO_OWNER;
     const repoName = process.env.GH_REPO_NAME || process.env.GITHUB_REPO_NAME;
     const pat = process.env.GH_PAT || process.env.GITHUB_PAT;
+
+    // Fetch avatar photo URL if avatar selected
+    let avatarPhotoUrl = "";
+    if (avatar_id) {
+      const { data: avatar } = await supabase
+        .from("avatars")
+        .select("photo_url")
+        .eq("id", avatar_id)
+        .single();
+      avatarPhotoUrl = avatar?.photo_url || "";
+    }
 
     // Choose workflow based on backend
     const workflow = backend === "kaggle" ? "pipeline.yml" : "modal_pipeline.yml";
@@ -66,6 +77,9 @@ export async function POST(request) {
           inputs: {
             job_id: jobId,
             pipeline_mode,
+            prompt,
+            avatar_id: avatar_id || "",
+            avatar_photo_url: avatarPhotoUrl,
           },
         }),
       }
