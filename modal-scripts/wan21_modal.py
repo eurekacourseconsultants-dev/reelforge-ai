@@ -1,7 +1,8 @@
 """
 wan21_modal.py — Wan2.1 video generation on Modal A10G
-Handles Pipeline 1 (t2v, no avatar) and Pipeline 2 (i2v, avatar no speech)
-Character consistency via FLUX reference image chaining.
+- Character clips: Phantom subject-consistent generation (clones repo, runs generate.py)
+- Scenery clips: vanilla WanPipeline T2V via diffusers
+- Pipeline 2 (avatar): WanImageToVideoPipeline I2V via diffusers
 Triggered by stage2b_modal.mjs via GitHub Actions
 """
 
@@ -39,43 +40,59 @@ image = (
         "supabase",
         "imageio",
         "imageio-ffmpeg",
+        "easydict",
+        "einops",
+        "rotary-embedding-torch",
+        "xfuser>=0.4.1",
     )
-    .run_commands("apt-get update && apt-get install -y ffmpeg")
+    .run_commands(
+        "apt-get update && apt-get install -y ffmpeg git",
+        # Clone Phantom repo into image at build time
+        "git clone https://github.com/Phantom-video/Phantom /phantom",
+    )
 )
 
 app = modal.App("reelforge-wan21", image=image)
 
 
-# ── One-time weight download function ──
+# ── Download Phantom weights (run once manually) ──
 @app.function(
     volumes={WEIGHTS_DIR: weights_volume},
     timeout=60 * 60,
     cpu=4,
     memory=16384,
 )
-def download_weights():
-    from huggingface_hub import snapshot_download
+def download_phantom_weights():
+    from huggingface_hub import snapshot_download, hf_hub_download
+    import os
 
+    # T2V 1.3B base (already present, but check)
     t2v_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B-Diffusers"
-    i2v_dir = f"{WEIGHTS_DIR}/Wan2.1-I2V-14B-480P-Diffusers"
-
     if not os.path.exists(t2v_dir):
         print("Downloading Wan2.1 T2V 1.3B...")
         snapshot_download(repo_id="Wan-AI/Wan2.1-T2V-1.3B-Diffusers", local_dir=t2v_dir)
-    else:
-        print("T2V weights already present.")
 
-    if not os.path.exists(i2v_dir):
-        print("Downloading Wan2.1 I2V 14B 480P...")
-        snapshot_download(repo_id="Wan-AI/Wan2.1-I2V-14B-480P-Diffusers", local_dir=i2v_dir)
+    # Phantom checkpoint — just the .pth file, not the full repo
+    phantom_ckpt = f"{WEIGHTS_DIR}/Phantom-Wan-1.3B.pth"
+    if not os.path.exists(phantom_ckpt):
+        print("Downloading Phantom-Wan-1.3B.pth...")
+        hf_hub_download(
+            repo_id="bytedance-research/Phantom",
+            filename="Phantom-Wan-1.3B.pth",
+            local_dir=f"{WEIGHTS_DIR}/phantom-ckpt",
+            token=os.environ.get("HF_TOKEN"),
+        )
+        import shutil
+        shutil.move(f"{WEIGHTS_DIR}/phantom-ckpt/Phantom-Wan-1.3B.pth", phantom_ckpt)
+        print("Phantom checkpoint downloaded.")
     else:
-        print("I2V weights already present.")
+        print("Phantom checkpoint already present.")
 
     weights_volume.commit()
-    print("Weights committed to volume.")
+    print("Done.")
 
 
-# ── Main generation function ──
+# ── Generate one clip — character mode via Phantom ──
 @app.function(
     gpu="A10G",
     volumes={WEIGHTS_DIR: weights_volume},
@@ -84,14 +101,119 @@ def download_weights():
     cpu=4,
     secrets=[modal.Secret.from_name("reelforge-secrets")],
 )
-def generate_clip(
+def generate_clip_phantom(
+    prompt: str,
+    clip_index: int,
+    job_id: str,
+    character_ref_url: str,
+):
+    import torch
+    import boto3
+    import requests
+    import tempfile
+    import subprocess
+    import shutil
+    import sys
+    import glob
+
+    print(f"[Clip {clip_index}] PHANTOM mode, job={job_id}")
+    print(f"[Clip {clip_index}] GPU: {torch.cuda.get_device_name(0)}")
+
+    # Download character ref image
+    print(f"[Clip {clip_index}] Downloading character ref from {character_ref_url}")
+    ref_response = requests.get(character_ref_url, timeout=30)
+    ref_response.raise_for_status()
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        f.write(ref_response.content)
+        ref_path = f.name
+    print(f"[Clip {clip_index}] Ref saved to {ref_path}")
+
+    # Output directory for this clip
+    out_dir = f"/tmp/phantom_out_{clip_index}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Wan2.1 T2V weights — Phantom needs the original (non-diffusers) format
+    # Check if we have the original format, if not use a symlink trick with diffusers format
+    wan_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B"
+    wan_diffusers_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B-Diffusers"
+
+    # Phantom expects the original HF format (not diffusers), download if needed
+    if not os.path.exists(wan_dir):
+        print(f"[Clip {clip_index}] Downloading Wan2.1 T2V 1.3B original format for Phantom...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="Wan-AI/Wan2.1-T2V-1.3B",
+            local_dir=wan_dir,
+            token=os.environ.get("HF_TOKEN"),
+        )
+        weights_volume.commit()
+
+    phantom_ckpt = f"{WEIGHTS_DIR}/Phantom-Wan-1.3B.pth"
+
+    cmd = [
+        sys.executable, "/phantom/generate.py",
+        "--task", "s2v-1.3B",
+        "--size", "832*480",
+        "--frame_num", "81",
+        "--ckpt_dir", wan_dir,
+        "--phantom_ckpt", phantom_ckpt,
+        "--ref_image", ref_path,
+        "--prompt", prompt,
+        "--save_file", f"{out_dir}/clip_{clip_index:02d}",
+        "--offload_model", "True",
+        "--t5_cpu",
+        "--base_seed", str(clip_index * 42),
+    ]
+
+    print(f"[Clip {clip_index}] Running Phantom: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=False, cwd="/phantom")
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Phantom generate.py failed with exit code {result.returncode}")
+
+    # Find the output mp4
+    mp4_files = glob.glob(f"{out_dir}/*.mp4")
+    if not mp4_files:
+        # Phantom may output .mp4 with a timestamp suffix — find any mp4
+        mp4_files = glob.glob(f"/phantom/*.mp4") + glob.glob(f"/tmp/*.mp4")
+    if not mp4_files:
+        raise RuntimeError(f"No mp4 output found after Phantom generation")
+
+    tmp_path = mp4_files[0]
+    print(f"[Clip {clip_index}] Output: {tmp_path}")
+
+    # Upload to R2
+    r2_key = f"jobs/{job_id}/clips/clip_{clip_index:02d}.mp4"
+    r2_client = boto3.client(
+        "s3",
+        endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+    )
+    with open(tmp_path, "rb") as f:
+        r2_client.upload_fileobj(f, os.environ["R2_BUCKET_NAME"], r2_key)
+
+    clip_url = f"{os.environ['R2_PUBLIC_URL']}/{r2_key}"
+    print(f"[Clip {clip_index}] Uploaded: {clip_url}")
+    return clip_url
+
+
+# ── Generate one clip — scenery T2V or avatar I2V via diffusers ──
+@app.function(
+    gpu="A10G",
+    volumes={WEIGHTS_DIR: weights_volume},
+    timeout=60 * 40,
+    memory=32768,
+    cpu=4,
+    secrets=[modal.Secret.from_name("reelforge-secrets")],
+)
+def generate_clip_diffusers(
     prompt: str,
     clip_index: int,
     job_id: str,
     mode: str = "t2v",
     avatar_photo_url: str = "",
-    character_ref_url: str = "",
-    scene_has_character: bool = False,
 ):
     import torch
     import boto3
@@ -99,36 +221,22 @@ def generate_clip(
     import tempfile
     from PIL import Image
 
-    print(f"[Clip {clip_index}] mode={mode}, has_character={scene_has_character}, job={job_id}")
+    print(f"[Clip {clip_index}] DIFFUSERS mode={mode}, job={job_id}")
     print(f"[Clip {clip_index}] GPU: {torch.cuda.get_device_name(0)}")
 
-    # Determine effective anchor image
-    # Priority: avatar_photo_url (Pipeline 2) > character_ref_url (Pipeline 1 with character)
-    anchor_url = ""
     if mode == "i2v" and avatar_photo_url:
-        anchor_url = avatar_photo_url
-    elif scene_has_character and character_ref_url:
-        anchor_url = character_ref_url
-
-    use_i2v = bool(anchor_url)
-
-    if use_i2v:
         from diffusers import WanImageToVideoPipeline
         model_dir = f"{WEIGHTS_DIR}/Wan2.1-I2V-14B-480P-Diffusers"
-        print(f"[Clip {clip_index}] I2V mode — loading pipeline, anchor={anchor_url}")
         pipe = WanImageToVideoPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
-        print(f"[Clip {clip_index}] Downloading anchor image...")
-        img_response = requests.get(anchor_url, timeout=30)
+        img_response = requests.get(avatar_photo_url, timeout=30)
         img_response.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             f.write(img_response.content)
-            anchor_path = f.name
+            avatar_path = f.name
 
-        image = Image.open(anchor_path).convert("RGB").resize((832, 480))
-
-        print(f"[Clip {clip_index}] Running I2V inference...")
+        image = Image.open(avatar_path).convert("RGB").resize((832, 480))
         output = pipe(
             image=image,
             prompt=prompt,
@@ -140,11 +248,9 @@ def generate_clip(
     else:
         from diffusers import WanPipeline
         model_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B-Diffusers"
-        print(f"[Clip {clip_index}] T2V mode — pure scene, no character anchor")
         pipe = WanPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
-        print(f"[Clip {clip_index}] Running T2V inference...")
         output = pipe(
             prompt=prompt,
             negative_prompt=NEGATIVE_PROMPT,
@@ -158,9 +264,7 @@ def generate_clip(
     from diffusers.utils import export_to_video
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         tmp_path = f.name
-
     export_to_video(output.frames[0], tmp_path, fps=16)
-    print(f"[Clip {clip_index}] Exported to {tmp_path}")
 
     r2_key = f"jobs/{job_id}/clips/clip_{clip_index:02d}.mp4"
     r2_client = boto3.client(
@@ -193,12 +297,11 @@ def main(
     with open(scenes_file, "r") as f:
         scenes = json.load(f)
 
-    # Support both formats: array of strings or array of {prompt, has_character}
     if scenes and isinstance(scenes[0], str):
         scenes = [{"prompt": s, "has_character": True} for s in scenes]
 
-    print(f"Generating {len(scenes)} clips for job {job_id}, mode={mode}")
-    print(f"character_ref_url={character_ref_url or 'none'}")
+    print(f"Generating {len(scenes)} clips for job {job_id}")
+    print(f"mode={mode}, character_ref_url={character_ref_url or 'none'}")
 
     supabase = create_client(
         os.environ["NEXT_PUBLIC_SUPABASE_URL"],
@@ -206,26 +309,51 @@ def main(
     )
     supabase.table("jobs").update({"status": "generating_clips"}).eq("id", job_id).execute()
 
-    results = list(
-        generate_clip.starmap([
-            (
-                scene["prompt"],
-                i,
-                job_id,
-                mode,
-                avatar_photo_url,
-                character_ref_url,
-                scene.get("has_character", True),
-            )
-            for i, scene in enumerate(scenes)
-        ])
-    )
+    # Build per-clip tasks — route to Phantom or diffusers
+    phantom_tasks = []
+    diffusers_tasks = []
 
-    print(f"All clips done: {results}")
+    for i, scene in enumerate(scenes):
+        prompt = scene["prompt"]
+        has_char = scene.get("has_character", True)
+        use_phantom = has_char and character_ref_url and mode == "t2v"
+        use_i2v = mode == "i2v" and avatar_photo_url
+
+        if use_phantom:
+            phantom_tasks.append((prompt, i, job_id, character_ref_url))
+        elif use_i2v:
+            diffusers_tasks.append((prompt, i, job_id, "i2v", avatar_photo_url))
+        else:
+            diffusers_tasks.append((prompt, i, job_id, "t2v", ""))
+
+    print(f"Phantom clips: {len(phantom_tasks)}, Diffusers clips: {len(diffusers_tasks)}")
+
+    # Results dict keyed by clip index
+    results = {}
+
+    # Run Phantom clips (parallel across containers)
+    if phantom_tasks:
+        for clip_url, task in zip(
+            generate_clip_phantom.starmap(phantom_tasks),
+            phantom_tasks
+        ):
+            results[task[1]] = clip_url
+
+    # Run diffusers clips (parallel across containers)
+    if diffusers_tasks:
+        for clip_url, task in zip(
+            generate_clip_diffusers.starmap(diffusers_tasks),
+            diffusers_tasks
+        ):
+            results[task[1]] = clip_url
+
+    # Reassemble in order
+    ordered_results = [results[i] for i in range(len(scenes))]
+    print(f"All clips done: {ordered_results}")
 
     supabase.table("jobs").update({
         "status": "clips_ready",
-        "clip_urls": json.dumps(results),
+        "clip_urls": json.dumps(ordered_results),
     }).eq("id", job_id).execute()
 
     print("Supabase updated. Done.")
