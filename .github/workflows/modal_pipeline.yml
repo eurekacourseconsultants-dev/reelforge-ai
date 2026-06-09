@@ -64,8 +64,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --fix-missing ffmpeg
 
       - name: Install Python deps
-        run: |
-          pip install modal supabase
+        run: pip install modal supabase boto3 requests
 
       - name: Install Node deps
         run: npm install
@@ -73,7 +72,14 @@ jobs:
       # ── Stage 1: Classify + generate scene prompts (ALL pipelines) ─────────
 
       - name: Stage 1 — Classify prompt and generate scenes
+        id: stage1
         run: node scripts/stage1.js
+
+      # ── Stage 1.5: Generate character reference image via FLUX (scene mode only, when character detected) ──
+
+      - name: Stage 1.5 — Generate character reference image
+        if: ${{ github.event.inputs.pipeline_mode == 'scene' && steps.stage1.outputs.has_character == 'true' }}
+        run: python scripts/stage1_5_character.py
 
       # ── Pipeline 1 & 2: scene or avatar_scene ──────────────────────────────
 
@@ -116,7 +122,7 @@ jobs:
       - name: Mark job failed on error
         if: failure()
         run: |
-          python - <<'EOF'
+          python - <<'PYEOF'
           import os
           from supabase import create_client
           supabase = create_client(
@@ -127,4 +133,4 @@ jobs:
               "status": "failed",
               "error": "GitHub Actions modal_pipeline failed"
           }).eq("id", os.environ["JOB_ID"]).execute()
-          EOF
+          PYEOF

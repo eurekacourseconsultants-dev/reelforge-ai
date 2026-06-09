@@ -1,14 +1,14 @@
 """
 wan21_modal.py — Wan2.1 video generation on Modal A10G
 Handles Pipeline 1 (t2v, no avatar) and Pipeline 2 (i2v, avatar no speech)
+Character consistency via FLUX reference image chaining.
 Triggered by stage2b_modal.mjs via GitHub Actions
 """
 
 import modal
 import os
-import sys
 
-# ── Persistent volume for model weights (downloaded once, reused forever) ──
+# ── Persistent volume for model weights ──
 weights_volume = modal.Volume.from_name("reelforge-wan21-weights", create_if_missing=True)
 WEIGHTS_DIR = "/weights"
 
@@ -54,9 +54,7 @@ app = modal.App("reelforge-wan21", image=image)
     memory=16384,
 )
 def download_weights():
-    """Download Wan2.1 weights to volume. Run this once manually."""
     from huggingface_hub import snapshot_download
-    import os
 
     t2v_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B-Diffusers"
     i2v_dir = f"{WEIGHTS_DIR}/Wan2.1-I2V-14B-480P-Diffusers"
@@ -64,14 +62,12 @@ def download_weights():
     if not os.path.exists(t2v_dir):
         print("Downloading Wan2.1 T2V 1.3B...")
         snapshot_download(repo_id="Wan-AI/Wan2.1-T2V-1.3B-Diffusers", local_dir=t2v_dir)
-        print("T2V download complete.")
     else:
         print("T2V weights already present.")
 
     if not os.path.exists(i2v_dir):
         print("Downloading Wan2.1 I2V 14B 480P...")
         snapshot_download(repo_id="Wan-AI/Wan2.1-I2V-14B-480P-Diffusers", local_dir=i2v_dir)
-        print("I2V download complete.")
     else:
         print("I2V weights already present.")
 
@@ -94,6 +90,8 @@ def generate_clip(
     job_id: str,
     mode: str = "t2v",
     avatar_photo_url: str = "",
+    character_ref_url: str = "",
+    scene_has_character: bool = False,
 ):
     import torch
     import boto3
@@ -101,26 +99,34 @@ def generate_clip(
     import tempfile
     from PIL import Image
 
-    print(f"[Clip {clip_index}] mode={mode}, job={job_id}")
+    print(f"[Clip {clip_index}] mode={mode}, has_character={scene_has_character}, job={job_id}")
     print(f"[Clip {clip_index}] GPU: {torch.cuda.get_device_name(0)}")
-    print(f"[Clip {clip_index}] VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB")
 
+    # Determine effective anchor image
+    # Priority: avatar_photo_url (Pipeline 2) > character_ref_url (Pipeline 1 with character)
+    anchor_url = ""
     if mode == "i2v" and avatar_photo_url:
+        anchor_url = avatar_photo_url
+    elif scene_has_character and character_ref_url:
+        anchor_url = character_ref_url
+
+    use_i2v = bool(anchor_url)
+
+    if use_i2v:
         from diffusers import WanImageToVideoPipeline
         model_dir = f"{WEIGHTS_DIR}/Wan2.1-I2V-14B-480P-Diffusers"
-        print(f"[Clip {clip_index}] Loading I2V pipeline from {model_dir}")
+        print(f"[Clip {clip_index}] I2V mode — loading pipeline, anchor={anchor_url}")
         pipe = WanImageToVideoPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
-        print(f"[Clip {clip_index}] Downloading avatar from {avatar_photo_url}")
-        img_response = requests.get(avatar_photo_url, timeout=30)
+        print(f"[Clip {clip_index}] Downloading anchor image...")
+        img_response = requests.get(anchor_url, timeout=30)
         img_response.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             f.write(img_response.content)
-            avatar_path = f.name
+            anchor_path = f.name
 
-        image = Image.open(avatar_path).convert("RGB")
-        image = image.resize((832, 480))
+        image = Image.open(anchor_path).convert("RGB").resize((832, 480))
 
         print(f"[Clip {clip_index}] Running I2V inference...")
         output = pipe(
@@ -134,7 +140,7 @@ def generate_clip(
     else:
         from diffusers import WanPipeline
         model_dir = f"{WEIGHTS_DIR}/Wan2.1-T2V-1.3B-Diffusers"
-        print(f"[Clip {clip_index}] Loading T2V pipeline from {model_dir}")
+        print(f"[Clip {clip_index}] T2V mode — pure scene, no character anchor")
         pipe = WanPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
@@ -154,7 +160,7 @@ def generate_clip(
         tmp_path = f.name
 
     export_to_video(output.frames[0], tmp_path, fps=16)
-    print(f"[Clip {clip_index}] Video exported to {tmp_path}")
+    print(f"[Clip {clip_index}] Exported to {tmp_path}")
 
     r2_key = f"jobs/{job_id}/clips/clip_{clip_index:02d}.mp4"
     r2_client = boto3.client(
@@ -164,7 +170,6 @@ def generate_clip(
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
         region_name="auto",
     )
-    print(f"[Clip {clip_index}] Uploading to R2: {r2_key}")
     with open(tmp_path, "rb") as f:
         r2_client.upload_fileobj(f, os.environ["R2_BUCKET_NAME"], r2_key)
 
@@ -177,18 +182,23 @@ def generate_clip(
 @app.local_entrypoint()
 def main(
     job_id: str,
-    prompts_file: str,
+    scenes_file: str,
     mode: str = "t2v",
     avatar_photo_url: str = "",
+    character_ref_url: str = "",
 ):
     import json
     from supabase import create_client
 
-    # Read prompts from file — no shell quoting issues, handles apostrophes safely
-    with open(prompts_file, "r") as f:
-        prompts = json.load(f)
+    with open(scenes_file, "r") as f:
+        scenes = json.load(f)
 
-    print(f"Generating {len(prompts)} clips for job {job_id}, mode={mode}")
+    # Support both formats: array of strings or array of {prompt, has_character}
+    if scenes and isinstance(scenes[0], str):
+        scenes = [{"prompt": s, "has_character": True} for s in scenes]
+
+    print(f"Generating {len(scenes)} clips for job {job_id}, mode={mode}")
+    print(f"character_ref_url={character_ref_url or 'none'}")
 
     supabase = create_client(
         os.environ["NEXT_PUBLIC_SUPABASE_URL"],
@@ -197,9 +207,18 @@ def main(
     supabase.table("jobs").update({"status": "generating_clips"}).eq("id", job_id).execute()
 
     results = list(
-        generate_clip.starmap(
-            [(prompt, i, job_id, mode, avatar_photo_url) for i, prompt in enumerate(prompts)]
-        )
+        generate_clip.starmap([
+            (
+                scene["prompt"],
+                i,
+                job_id,
+                mode,
+                avatar_photo_url,
+                character_ref_url,
+                scene.get("has_character", True),
+            )
+            for i, scene in enumerate(scenes)
+        ])
     )
 
     print(f"All clips done: {results}")
