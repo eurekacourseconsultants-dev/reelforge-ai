@@ -84,6 +84,31 @@ function getStates(mode, status) {
   return steps.map((_, i) => i < idx ? 'done' : i === idx ? 'active' : 'idle')
 }
 
+function BackendToggle({ backend, setBackend }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+      <span style={{ fontSize: '12px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px' }}>Pipeline</span>
+      <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${C.border}` }}>
+        <button
+          onClick={() => setBackend('modal')}
+          style={{ padding: '7px 16px', fontSize: '13px', fontWeight: '600', border: 'none', cursor: 'pointer', background: backend === 'modal' ? C.accent : C.surface, color: backend === 'modal' ? '#000' : C.muted }}
+        >
+          ⚡ Modal
+        </button>
+        <button
+          onClick={() => setBackend('kaggle')}
+          style={{ padding: '7px 16px', fontSize: '13px', fontWeight: '600', border: 'none', cursor: 'pointer', background: backend === 'kaggle' ? C.accent : C.surface, color: backend === 'kaggle' ? '#000' : C.muted }}
+        >
+          🐢 Kaggle
+        </button>
+      </div>
+      <span style={{ fontSize: '11px', color: C.muted }}>
+        {backend === 'modal' ? 'A10G · FlashAttn' : 'T4 · Free quota'}
+      </span>
+    </div>
+  )
+}
+
 export default function Home() {
   const [prompt, setPrompt]       = useState('')
   const [avatars, setAvatars]     = useState([])
@@ -92,6 +117,7 @@ export default function Home() {
   const [jobStatus, setJobStatus] = useState(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
+  const [backend, setBackend]     = useState('modal')  // ← new
 
   const [showGenModal, setShowGenModal] = useState(false)
   const [genPrefs, setGenPrefs]         = useState({ name: '', gender: '', age: '', ethnicity: '', style: '' })
@@ -146,7 +172,7 @@ export default function Home() {
     const res = await fetch('/api/start-job', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, avatar_id: selectedId || null }),
+      body: JSON.stringify({ prompt, avatar_id: selectedId || null, backend }),  // ← backend added
     })
     const data = await res.json()
     if (data.error) { setError(data.error); setLoading(false); return }
@@ -222,6 +248,7 @@ export default function Home() {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
             />
+            <BackendToggle backend={backend} setBackend={setBackend} />
             <button style={S.button} onClick={handleForge} disabled={loading}>
               {loading ? 'Forging...' : 'Forge'}
             </button>

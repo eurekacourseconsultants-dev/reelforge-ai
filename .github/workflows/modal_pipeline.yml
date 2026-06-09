@@ -1,0 +1,106 @@
+name: Modal Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Supabase job UUID"
+        required: true
+      pipeline_mode:
+        description: "scene | avatar_scene | avatar_lipsync"
+        required: true
+        default: "scene"
+
+env:
+  JOB_ID: ${{ github.event.inputs.job_id }}
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+  R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+  MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python deps
+        run: |
+          pip install modal supabase
+
+      - name: Install Node deps
+        run: npm install
+
+      # ── Pipeline 1 & 2: scene or avatar_scene ──────────────────────────────
+
+      - name: Stage 2B Modal — Generate clips (Pipeline 1 & 2)
+        if: ${{ github.event.inputs.pipeline_mode == 'scene' || github.event.inputs.pipeline_mode == 'avatar_scene' }}
+        run: node scripts/stage2b_modal.js
+
+      - name: Stage 3B — Stitch clips (Pipeline 1 & 2)
+        if: ${{ github.event.inputs.pipeline_mode == 'scene' || github.event.inputs.pipeline_mode == 'avatar_scene' }}
+        run: node scripts/stage3b.js
+
+      - name: Stage 4 — Final encode (Pipeline 1 & 2)
+        if: ${{ github.event.inputs.pipeline_mode == 'scene' || github.event.inputs.pipeline_mode == 'avatar_scene' }}
+        run: node scripts/stage4.js
+
+      # ── Pipeline 3: avatar_lipsync ─────────────────────────────────────────
+
+      - name: Stage 2A — TTS voiceover (Pipeline 3)
+        if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
+        run: python scripts/stage2a.py
+
+      - name: Stage 2B Modal — Generate scene clips (Pipeline 3)
+        if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
+        run: node scripts/stage2b_modal.js
+
+      - name: Stage 3B — Stitch scene clips (Pipeline 3)
+        if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
+        run: node scripts/stage3b.js
+
+      - name: Stage 3A Modal — LongCat lipsync (Pipeline 3)
+        if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
+        run: node scripts/stage3a_modal.js
+
+      - name: Stage 4 — Final encode (Pipeline 3)
+        if: ${{ github.event.inputs.pipeline_mode == 'avatar_lipsync' }}
+        run: node scripts/stage4.js
+
+      # ── Catch errors ───────────────────────────────────────────────────────
+
+      - name: Mark job failed on error
+        if: failure()
+        run: |
+          python - <<'EOF'
+          import os
+          from supabase import create_client
+          supabase = create_client(
+              os.environ["NEXT_PUBLIC_SUPABASE_URL"],
+              os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+          )
+          supabase.table("jobs").update({
+              "status": "failed",
+              "error": "GitHub Actions modal_pipeline failed"
+          }).eq("id", os.environ["JOB_ID"]).execute()
+          EOF
