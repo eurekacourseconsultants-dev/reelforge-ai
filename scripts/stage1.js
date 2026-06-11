@@ -55,27 +55,62 @@ Return exactly this structure:
   "title": "short video title under 10 words",
   "script": "full 30-second spoken script (avatar_lipsync mode only, else empty string)",
   "environment": "one locked environment description, 15-25 words, describing the consistent setting, lighting, and visual style used across ALL clips. This must be specific and reusable verbatim as a prompt prefix.",
-  "has_character": true or false (true if any human, creature, or named character appears in the video),
-  "character_description": "only if has_character is true — full body description of the character for a reference image: clothing, outfit, armour, accessories, body type, hair, age, style. Be specific and detailed. Empty string if has_character is false.",
+  "has_character": true or false,
+  "character_json": {
+    "type": "human | creature | robot | animal | fantasy | other",
+    "gender": "male | female | neutral | n/a",
+    "age": "descriptive age e.g. elderly, young adult, middle-aged, n/a",
+    "ethnicity": "e.g. East Asian, African, Caucasian, n/a for non-humans",
+    "face": {
+      "skin": "texture and tone e.g. weathered tanned, pale smooth",
+      "eyes": "color, shape, expression e.g. dark brown narrow intense",
+      "distinguishing": "scars, markings, unique features or empty string"
+    },
+    "hair": {
+      "color": "exact color",
+      "length": "short | medium | long | n/a",
+      "style": "specific style e.g. loose topknot, braided, wild mane",
+      "texture": "coarse | smooth | curly | straight | n/a"
+    },
+    "body": {
+      "build": "e.g. lean wiry, muscular, stocky, slender",
+      "height": "short | medium | tall",
+      "posture": "e.g. upright rigid, hunched, relaxed"
+    },
+    "clothing": {
+      "primary": "main garment with material and color e.g. worn black lacquered chest armor with red lacing",
+      "secondary": "trousers, robe, lower garment",
+      "footwear": "specific footwear",
+      "accessories": "weapons, jewelry, tools carried on body"
+    },
+    "color_palette": "3-5 dominant colors that define this character e.g. dark blacks, deep navy, weathered silver, muted red",
+    "flux_prompt": "full body portrait, [character], standing facing camera, neutral pose, plain white background, sharp focus, character sheet style, 8k — written as a detailed FLUX generation prompt capturing ALL above attributes"
+  },
   "scenes": [
-    { "prompt": "scene description", "has_character": true or false },
-    { "prompt": "scene description", "has_character": true or false },
-    { "prompt": "scene description", "has_character": true or false },
-    { "prompt": "scene description", "has_character": true or false },
-    { "prompt": "scene description", "has_character": true or false },
-    { "prompt": "scene description", "has_character": true or false }
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" },
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" },
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" },
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" },
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" },
+    { "prompt": "scene description", "has_character": true or false, "motion": "specific body movement description" }
   ]
 }
 
 Rules:
-- environment: extract the core setting from the prompt. If no specific environment is mentioned, invent one that fits the tone. Must be consistent across all 6 scenes.
-- script: natural spoken 30-second monologue, no stage directions (avatar_lipsync only)
-- scenes: exactly 6 items. Each has a "prompt" (vivid 5-second visual action, do NOT repeat environment — it will be prepended) and "has_character" (true if the character is visible in this clip, false if it is pure scenery/environment).
-- character_description: written as a FLUX image generation prompt for a full body character sheet. Example: "full body portrait, Japanese samurai, black and silver lamellar armour, dark red silk cloak, katana at hip, standing facing camera, neutral pose, plain white background, sharp focus, character sheet style, 8k"
-- For avatar_scene/avatar_lipsync: has_character is always true for all scenes since the avatar appears throughout.
-- For scene mode: some clips may be pure scenery (has_character false), others may feature the character (has_character true).`
+- has_character: true if ANY human, creature, robot, animal or named character appears.
+- character_json: only populate if has_character is true. If has_character is false, set character_json to null.
+- character_json.flux_prompt: this is used to generate the reference image via FLUX. Must be extremely specific — include every visual attribute from the JSON. Start with "full body portrait," and end with "plain white background, sharp focus, character sheet style, 8k".
+- character_json.color_palette: critical for consistency — list the exact dominant colors of the character.
+- environment: extract the core setting. Must be consistent across all 6 scenes.
+- script: natural spoken 30-second monologue, no stage directions (avatar_lipsync only), else empty string.
+- scenes: exactly 6 items.
+  - prompt: vivid 5-second visual action, do NOT repeat environment (it will be prepended).
+  - has_character: true if the character is visible in this clip.
+  - motion: ONLY populate if has_character is true for this scene. Describe specific body movement in detail — e.g. "walks slowly forward, head turning left scanning for danger, right hand resting on sword hilt, feet stepping deliberately on wet stone". This must describe exactly what the body is doing. Empty string if has_character is false.
+- For avatar_scene/avatar_lipsync: has_character is always true for all scenes.
+- For scene mode: some clips may be pure scenery (has_character false, motion empty string).`
       }],
-      max_tokens: 1500,
+      max_tokens: 2500,
     })
   })
 
@@ -93,26 +128,68 @@ Rules:
     parsed.pipeline_mode = 'avatar_scene'
   }
 
-  // Prepend locked environment to every scene prompt
   const environment = parsed.environment || ''
-  const lockedScenes = parsed.scenes.map(scene => ({
-    prompt: `${environment}, ${scene.prompt}`,
-    has_character: scene.has_character,
-  }))
+  const hasCharacter = !!parsed.has_character
+  const characterJson = parsed.character_json || null
+
+  // Build the identity clause from character_json — injected into every character clip prompt
+  // This gives the model both a visual ref image AND a detailed text anchor to fight drift
+  function buildIdentityClause(cj) {
+    if (!cj) return ''
+    const parts = []
+    if (cj.age && cj.age !== 'n/a') parts.push(cj.age)
+    if (cj.ethnicity && cj.ethnicity !== 'n/a') parts.push(cj.ethnicity)
+    if (cj.gender && cj.gender !== 'n/a') parts.push(cj.gender)
+    if (cj.type) parts.push(cj.type)
+    const base = parts.join(' ')
+
+    const details = []
+    if (cj.face?.skin) details.push(`${cj.face.skin} skin`)
+    if (cj.face?.eyes) details.push(`${cj.face.eyes} eyes`)
+    if (cj.face?.distinguishing) details.push(cj.face.distinguishing)
+    if (cj.hair?.color && cj.hair?.style) details.push(`${cj.hair.color} hair in ${cj.hair.style}`)
+    if (cj.body?.build) details.push(`${cj.body.build} build`)
+    if (cj.clothing?.primary) details.push(`wearing ${cj.clothing.primary}`)
+    if (cj.clothing?.secondary) details.push(cj.clothing.secondary)
+    if (cj.clothing?.accessories) details.push(cj.clothing.accessories)
+    if (cj.color_palette) details.push(`color palette: ${cj.color_palette}`)
+
+    return `${base}${details.length ? ', ' + details.join(', ') : ''}`
+  }
+
+  const identityClause = hasCharacter && characterJson ? buildIdentityClause(characterJson) : ''
+
+  // Build locked scenes — environment + identity clause + scene prompt + motion
+  const lockedScenes = parsed.scenes.map(scene => {
+    let fullPrompt = environment ? `${environment}, ` : ''
+    if (scene.has_character && identityClause) {
+      fullPrompt += `${identityClause} — `
+    }
+    fullPrompt += scene.prompt
+    if (scene.has_character && scene.motion) {
+      fullPrompt += `, ${scene.motion}`
+    }
+    return {
+      prompt: fullPrompt,
+      has_character: scene.has_character,
+      motion: scene.motion || '',
+    }
+  })
 
   // Flat prompt array for backward compat with stage2b_modal.mjs
   const scenePrompts = lockedScenes.map(s => s.prompt)
 
-  const hasCharacter = !!parsed.has_character
-  const characterDescription = parsed.character_description || ''
+  // character_description for stage1_5 FLUX generation — use flux_prompt from character_json
+  const characterDescription = characterJson?.flux_prompt || ''
 
   console.log('Pipeline mode:', parsed.pipeline_mode)
   console.log('Has avatar:', hasAvatar)
   console.log('Has character:', hasCharacter)
-  console.log('Character description:', characterDescription)
+  console.log('Identity clause:', identityClause)
+  console.log('Character JSON:', JSON.stringify(characterJson, null, 2))
   console.log('Title:', parsed.title)
   console.log('Environment:', environment)
-  console.log('Locked scenes:', lockedScenes)
+  console.log('Locked scenes:', JSON.stringify(lockedScenes, null, 2))
 
   // Write to GITHUB_OUTPUT
   const outputFile = process.env.GITHUB_OUTPUT
@@ -129,7 +206,9 @@ Rules:
     locked_scenes: lockedScenes,
     environment,
     has_character: hasCharacter,
-    character_description: characterDescription,
+    character_json: characterJson,
+    character_description: characterDescription,  // flux_prompt used by stage1_5
+    identity_clause: identityClause,
     character_ref_url: '',   // filled in by stage1_5 if has_character
     avatar_photo_url: AVATAR_PHOTO_URL,
     avatar_id: AVATAR_ID,

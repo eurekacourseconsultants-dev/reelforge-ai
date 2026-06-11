@@ -1,8 +1,9 @@
 """
 wan21_modal.py — Wan2.1 video generation on Modal A10G
-- Character clips: Phantom subject-consistent generation (clones repo, runs generate.py)
-- Scenery clips: vanilla WanPipeline T2V via diffusers
+- Character clips (has_character=True): VACE R2V with character ref image for consistency
+- Scenery clips (has_character=False): vanilla WanPipeline T2V via diffusers
 - Pipeline 2 (avatar): WanImageToVideoPipeline I2V via diffusers
+- Phantom: kept but no longer used for scene pipeline (VACE replaced it)
 Triggered by stage2b_modal.mjs via GitHub Actions
 """
 
@@ -90,6 +91,136 @@ def download_phantom_weights():
 
     weights_volume.commit()
     print("Done.")
+
+
+# ── Download VACE weights (run once manually) ──
+@app.function(
+    volumes={WEIGHTS_DIR: weights_volume},
+    timeout=60 * 60,
+    cpu=4,
+    memory=16384,
+    secrets=[modal.Secret.from_name("reelforge-secrets")],
+)
+def download_vace_weights():
+    from huggingface_hub import snapshot_download
+    import os
+
+    vace_dir = f"{WEIGHTS_DIR}/Wan2.1-VACE-1.3B"
+    if not os.path.exists(vace_dir):
+        print("Downloading Wan2.1-VACE-1.3B weights...")
+        snapshot_download(
+            repo_id="Wan-AI/Wan2.1-VACE-1.3B",
+            local_dir=vace_dir,
+            token=os.environ.get("HF_TOKEN"),
+        )
+        weights_volume.commit()
+        print("VACE weights downloaded.")
+    else:
+        print("VACE weights already present.")
+
+
+# ── Generate one clip — character mode via VACE R2V ──
+@app.function(
+    gpu="A10G",
+    volumes={WEIGHTS_DIR: weights_volume},
+    timeout=60 * 40,
+    memory=32768,
+    cpu=4,
+    secrets=[modal.Secret.from_name("reelforge-secrets")],
+)
+def generate_clip_vace(
+    prompt: str,
+    clip_index: int,
+    job_id: str,
+    character_ref_url: str,
+):
+    import torch
+    import boto3
+    import requests
+    import tempfile
+    import subprocess
+    import sys
+    import glob
+    import os
+
+    print(f"[Clip {clip_index}] VACE R2V mode, job={job_id}")
+    print(f"[Clip {clip_index}] GPU: {torch.cuda.get_device_name(0)}")
+
+    # Download character ref image locally
+    print(f"[Clip {clip_index}] Downloading character ref from {character_ref_url}")
+    ref_response = requests.get(character_ref_url, timeout=30)
+    ref_response.raise_for_status()
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        f.write(ref_response.content)
+        ref_path = f.name
+    print(f"[Clip {clip_index}] Ref saved to {ref_path}")
+
+    vace_dir = f"{WEIGHTS_DIR}/Wan2.1-VACE-1.3B"
+
+    # Download weights on first run if missing
+    if not os.path.exists(vace_dir):
+        print(f"[Clip {clip_index}] VACE weights missing — downloading now...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="Wan-AI/Wan2.1-VACE-1.3B",
+            local_dir=vace_dir,
+            token=os.environ.get("HF_TOKEN"),
+        )
+        weights_volume.commit()
+
+    out_dir = f"/tmp/vace_out_{clip_index}"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = f"{out_dir}/clip_{clip_index:02d}.mp4"
+
+    # Use same seed for all clips so character stays consistent
+    FIXED_SEED = 42
+
+    cmd = [
+        sys.executable,
+        f"{vace_dir}/generate.py",
+        "--task", "vace-1.3B",
+        "--size", "832*480",
+        "--frame_num", "81",
+        "--ckpt_dir", vace_dir,
+        "--src_ref_images", ref_path,
+        "--prompt", prompt,
+        "--save_file", out_path,
+        "--offload_model", "True",
+        "--t5_cpu",
+        "--base_seed", str(FIXED_SEED),
+    ]
+
+    print(f"[Clip {clip_index}] Running VACE: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=False, cwd=vace_dir)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"VACE generate.py failed with exit code {result.returncode}")
+
+    # Find output mp4 — VACE may append a suffix
+    mp4_files = glob.glob(f"{out_dir}/*.mp4")
+    if not mp4_files:
+        mp4_files = glob.glob(f"/tmp/*.mp4")
+    if not mp4_files:
+        raise RuntimeError(f"No mp4 output found after VACE generation")
+
+    tmp_path = mp4_files[0]
+    print(f"[Clip {clip_index}] Output: {tmp_path}")
+
+    # Upload to R2
+    r2_key = f"jobs/{job_id}/clips/clip_{clip_index:02d}.mp4"
+    r2_client = boto3.client(
+        "s3",
+        endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+    )
+    with open(tmp_path, "rb") as f:
+        r2_client.upload_fileobj(f, os.environ["R2_BUCKET_NAME"], r2_key)
+
+    clip_url = f"{os.environ['R2_PUBLIC_URL']}/{r2_key}"
+    print(f"[Clip {clip_index}] Uploaded: {clip_url}")
+    return clip_url
 
 
 # ── Generate one clip — character mode via Phantom ──
@@ -309,33 +440,34 @@ def main(
     )
     supabase.table("jobs").update({"status": "generating_clips"}).eq("id", job_id).execute()
 
-    # Build per-clip tasks — route to Phantom or diffusers
-    phantom_tasks = []
+    # Build per-clip tasks — route to VACE (character) or diffusers (scenery/avatar)
+    vace_tasks = []
+    phantom_tasks = []  # kept for reference, not used
     diffusers_tasks = []
 
     for i, scene in enumerate(scenes):
         prompt = scene["prompt"]
         has_char = scene.get("has_character", True)
-        use_phantom = has_char and character_ref_url and mode == "t2v"
+        use_vace = has_char and character_ref_url and mode == "t2v"
         use_i2v = mode == "i2v" and avatar_photo_url
 
-        if use_phantom:
-            phantom_tasks.append((prompt, i, job_id, character_ref_url))
+        if use_vace:
+            vace_tasks.append((prompt, i, job_id, character_ref_url))
         elif use_i2v:
             diffusers_tasks.append((prompt, i, job_id, "i2v", avatar_photo_url))
         else:
             diffusers_tasks.append((prompt, i, job_id, "t2v", ""))
 
-    print(f"Phantom clips: {len(phantom_tasks)}, Diffusers clips: {len(diffusers_tasks)}")
+    print(f"VACE clips: {len(vace_tasks)}, Diffusers clips: {len(diffusers_tasks)}")
 
     # Results dict keyed by clip index
     results = {}
 
-    # Run Phantom clips (parallel across containers)
-    if phantom_tasks:
+    # Run VACE clips (parallel across containers)
+    if vace_tasks:
         for clip_url, task in zip(
-            generate_clip_phantom.starmap(phantom_tasks),
-            phantom_tasks
+            generate_clip_vace.starmap(vace_tasks),
+            vace_tasks
         ):
             results[task[1]] = clip_url
 
