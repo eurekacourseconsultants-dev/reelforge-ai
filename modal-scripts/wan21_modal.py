@@ -155,7 +155,12 @@ def generate_clip_vace(
     ref_response.raise_for_status()
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
         f.write(ref_response.content)
-        ref_path = f.name
+        ref_path_jpg = f.name
+
+    # Convert to PNG — VACE expects PNG ref images
+    from PIL import Image as PilImage
+    ref_path = ref_path_jpg.replace(".jpg", ".png")
+    PilImage.open(ref_path_jpg).convert("RGB").save(ref_path, "PNG")
     print(f"[Clip {clip_index}] Ref saved to {ref_path}")
 
     vace_dir = f"{WEIGHTS_DIR}/Wan2.1-VACE-1.3B"
@@ -194,7 +199,9 @@ def generate_clip_vace(
     ]
 
     print(f"[Clip {clip_index}] Running VACE: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd="/wan21")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "/wan21:" + env.get("PYTHONPATH", "")
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd="/wan21", env=env)
     # Always print stdout/stderr so we can see VACE logs in Modal
     if result.stdout:
         print(result.stdout)
