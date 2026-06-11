@@ -35,8 +35,8 @@ app = modal.App("reelforge-flux-character", image=image)
 @app.function(
     gpu="A10G",
     volumes={WEIGHTS_DIR: weights_volume},
-    timeout=60 * 10,
-    memory=16384,
+    timeout=60 * 15,
+    memory=32768,
     cpu=4,
     secrets=[modal.Secret.from_name("reelforge-secrets")],
 )
@@ -59,7 +59,7 @@ def generate_character_ref(job_id: str, character_description: str) -> str:
 
     print(f"Loading FLUX pipeline from {flux_dir}")
     pipe = FluxPipeline.from_pretrained(flux_dir, torch_dtype=torch.bfloat16)
-    pipe.enable_model_cpu_offload()
+    pipe.enable_sequential_cpu_offload()
 
     print(f"Generating: {character_description}")
     output = pipe(
