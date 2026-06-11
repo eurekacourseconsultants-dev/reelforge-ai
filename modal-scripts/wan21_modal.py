@@ -46,8 +46,9 @@ image = (
         "rotary-embedding-torch",
         "xfuser>=0.4.1",
         "dashscope",
-        "flash-attn",
     )
+    .pip_install("packaging")
+    .pip_install("flash-attn", extra_index_url="https://download.pytorch.org/whl/cu124")
     .run_commands(
         "apt-get update && apt-get install -y ffmpeg git",
         # Clone Phantom repo into image at build time
