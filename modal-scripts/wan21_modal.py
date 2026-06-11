@@ -194,7 +194,12 @@ def generate_clip_vace(
     ]
 
     print(f"[Clip {clip_index}] Running VACE: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=False, cwd="/wan21")
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd="/wan21")
+    # Always print stdout/stderr so we can see VACE logs in Modal
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
 
     if result.returncode != 0:
         raise RuntimeError(f"VACE generate.py failed with exit code {result.returncode}")
