@@ -45,6 +45,7 @@ image = (
         "einops",
         "rotary-embedding-torch",
         "xfuser>=0.4.1",
+        "dashscope",
     )
     .run_commands(
         "apt-get update && apt-get install -y ffmpeg git",
