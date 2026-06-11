@@ -50,6 +50,8 @@ image = (
         "apt-get update && apt-get install -y ffmpeg git",
         # Clone Phantom repo into image at build time
         "git clone https://github.com/Phantom-video/Phantom /phantom",
+        # Clone Wan2.1 repo for VACE generate.py
+        "git clone https://github.com/Wan-Video/Wan2.1 /wan21",
     )
 )
 
@@ -177,7 +179,7 @@ def generate_clip_vace(
 
     cmd = [
         sys.executable,
-        f"{vace_dir}/generate.py",
+        "/wan21/generate.py",
         "--task", "vace-1.3B",
         "--size", "832*480",
         "--frame_num", "81",
@@ -191,7 +193,7 @@ def generate_clip_vace(
     ]
 
     print(f"[Clip {clip_index}] Running VACE: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=False, cwd=vace_dir)
+    result = subprocess.run(cmd, capture_output=False, cwd="/wan21")
 
     if result.returncode != 0:
         raise RuntimeError(f"VACE generate.py failed with exit code {result.returncode}")

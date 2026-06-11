@@ -179,13 +179,35 @@ Rules:
   // Flat prompt array for backward compat with stage2b_modal.mjs
   const scenePrompts = lockedScenes.map(s => s.prompt)
 
-  // character_description for stage1_5 FLUX generation — use flux_prompt from character_json
-  const characterDescription = characterJson?.flux_prompt || ''
+  // Build FLUX prompt programmatically — do NOT trust Groq's flux_prompt, it shortcuts
+  function buildFluxPrompt(cj) {
+    if (!cj) return ''
+    const parts = [
+      'full body portrait,',
+      [cj.age, cj.ethnicity, cj.gender, cj.type].filter(v => v && v !== 'n/a').join(' ') + ',',
+      cj.face?.skin ? cj.face.skin + ' skin,' : '',
+      cj.face?.eyes ? cj.face.eyes + ' eyes,' : '',
+      cj.face?.distinguishing ? cj.face.distinguishing + ',' : '',
+      cj.hair?.color && cj.hair?.style ? cj.hair.color + ' hair in ' + cj.hair.style + ',' : '',
+      cj.body?.build ? cj.body.build + ' build,' : '',
+      cj.body?.posture ? cj.body.posture + ' posture,' : '',
+      cj.clothing?.primary ? 'wearing ' + cj.clothing.primary + ',' : '',
+      cj.clothing?.secondary ? cj.clothing.secondary + ',' : '',
+      cj.clothing?.footwear ? cj.clothing.footwear + ',' : '',
+      cj.clothing?.accessories ? cj.clothing.accessories + ',' : '',
+      'standing facing camera, neutral pose, plain white background, sharp focus, character sheet style, 8k',
+    ]
+    return parts.filter(Boolean).join(' ')
+  }
+
+  // character_description for stage1_5 FLUX generation — built programmatically from character_json
+  const characterDescription = hasCharacter && characterJson ? buildFluxPrompt(characterJson) : ''
 
   console.log('Pipeline mode:', parsed.pipeline_mode)
   console.log('Has avatar:', hasAvatar)
   console.log('Has character:', hasCharacter)
   console.log('Identity clause:', identityClause)
+  console.log('FLUX prompt:', characterDescription)
   console.log('Character JSON:', JSON.stringify(characterJson, null, 2))
   console.log('Title:', parsed.title)
   console.log('Environment:', environment)
