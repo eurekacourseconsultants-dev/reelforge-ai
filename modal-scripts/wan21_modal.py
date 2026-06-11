@@ -46,6 +46,7 @@ image = (
         "rotary-embedding-torch",
         "xfuser>=0.4.1",
         "dashscope",
+        "flash-attn",
     )
     .run_commands(
         "apt-get update && apt-get install -y ffmpeg git",
