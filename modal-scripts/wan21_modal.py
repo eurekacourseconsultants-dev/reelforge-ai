@@ -48,7 +48,10 @@ image = (
         "dashscope",
     )
     .pip_install("packaging")
-    .pip_install("flash-attn", extra_index_url="https://download.pytorch.org/whl/cu124")
+    .pip_install(
+        "flash-attn",
+        extra_index_url="https://huggingface.github.io/flash-attention-wheels/",
+    )
     .run_commands(
         "apt-get update && apt-get install -y ffmpeg git",
         # Clone Phantom repo into image at build time
