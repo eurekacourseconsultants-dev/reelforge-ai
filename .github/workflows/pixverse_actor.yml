@@ -1,0 +1,53 @@
+name: PixVerse Actor Generation
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Full prompt text to send to PixVerse image generation'
+        required: true
+        type: string
+      filename:
+        description: 'Output filename, e.g. hdb-office-female-29-01.jpg'
+        required: true
+        type: string
+      gender:
+        required: false
+        type: string
+      age:
+        required: false
+        type: string
+      environment:
+        required: false
+        type: string
+      clothing:
+        required: false
+        type: string
+
+jobs:
+  generate-actor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run PixVerse actor generation (headless)
+        env:
+          KLING_ACCOUNTS: ${{ secrets.KLING_ACCOUNTS }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          ACTOR_PROMPT: ${{ inputs.prompt }}
+          ACTOR_FILENAME: ${{ inputs.filename }}
+        run: node scripts/generate_actor_headless.js

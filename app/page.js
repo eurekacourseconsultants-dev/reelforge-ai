@@ -37,7 +37,7 @@ const S = {
     background: selected ? C.accentDim : C.surface,
     transition: 'border-color 0.15s',
   }),
-  avatarImg: { width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' },
+  avatarImg: { width: '100%', aspectRatio: '9/16', objectFit: 'cover', display: 'block' },
   avatarLabel: { fontSize: '11px', color: C.muted, textAlign: 'center', padding: '4px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   noAvatar: (selected) => ({
     border: `2px solid ${selected ? C.accent : C.border}`,
@@ -45,7 +45,7 @@ const S = {
     cursor: 'pointer',
     background: selected ? C.accentDim : C.surface,
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    aspectRatio: '1', fontSize: '22px',
+    aspectRatio: '9/16', fontSize: '22px',
   }),
   stepRow: (state) => ({ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 0', color: state === 'done' ? C.accent : state === 'active' ? C.text : '#444' }),
   errorBox: { color: C.error, marginTop: '16px', padding: '12px', background: '#1a0000', border: '1px solid #440000', borderRadius: '8px', fontSize: '14px' },
@@ -53,6 +53,19 @@ const S = {
   downloadLink: { display: 'block', textAlign: 'center', marginTop: '10px', color: C.accent, textDecoration: 'none', fontWeight: '700', fontSize: '14px' },
   divider: { border: 'none', borderTop: `1px solid ${C.border}`, margin: '24px 0' },
   fieldLabel: { fontWeight: '600', marginBottom: '6px', fontSize: '14px', color: C.text },
+  quotaBadge: { fontSize: '12px', color: C.muted, marginBottom: '12px' },
+  typeRow: { display: 'flex', gap: '8px', marginBottom: '24px' },
+  typeCard: (selected) => ({
+    flex: 1,
+    border: `2px solid ${selected ? C.accent : C.border}`,
+    borderRadius: '10px',
+    padding: '14px 10px',
+    cursor: 'pointer',
+    background: selected ? C.accentDim : C.surface,
+    textAlign: 'center',
+  }),
+  typeTitle: { fontWeight: '700', fontSize: '13px', marginBottom: '4px' },
+  typeDesc: { fontSize: '11px', color: C.muted },
 }
 
 function optionBtn(selected) {
@@ -60,8 +73,8 @@ function optionBtn(selected) {
 }
 
 const STEPS = {
-  avatar_lipsync: ['Generating Script', 'Generating Voiceover', 'Animating Avatar', 'Encoding', 'Ready'],
-  avatar_scene:   ['Generating Script', 'Generating Avatar Scenes', 'Compositing', 'Encoding', 'Ready'],
+  avatar_lipsync: ['Generating Script', 'Generating Voiceover', 'Animating Actor', 'Encoding', 'Ready'],
+  avatar_scene:   ['Generating Script', 'Generating Scenes', 'Compositing', 'Encoding', 'Ready'],
   scene:          ['Generating Script', 'Generating Scenes', 'Stitching', 'Encoding', 'Ready'],
 }
 
@@ -72,10 +85,20 @@ const STATUS_IDX = {
 }
 
 const ESTIMATES = {
-  avatar_lipsync: '~30–45 min',
-  avatar_scene:   '~40–60 min',
-  scene:          '~60–90 min',
+  avatar_lipsync: '~10–20 min', // Dreamina, single step
+  avatar_scene:   '~40–60 min', // PixVerse, I2V chaining
+  scene:          '~60–90 min', // PixVerse, fresh actor + I2V chaining
 }
+
+// Video type definitions, per the implementation plan:
+// Type 1 -> Dreamina (talking actor, pick actor, paste script)
+// Type 2 -> PixVerse (pick actor, describe scene)
+// Type 3 -> PixVerse (no actor selection, describe scene + actor generated on the fly)
+const VIDEO_TYPES = [
+  { id: 1, mode: 'avatar_lipsync', title: 'Talking Actor', desc: 'Pick an actor, paste a script', needsActor: true },
+  { id: 2, mode: 'avatar_scene',   title: 'Scene + Actor', desc: 'Pick an actor, describe a scene', needsActor: true },
+  { id: 3, mode: 'scene',          title: 'Fresh Scene',   desc: 'Describe everything, actor generated for you', needsActor: false },
+]
 
 function getStates(mode, status) {
   const steps = STEPS[mode] || STEPS.scene
@@ -84,53 +107,45 @@ function getStates(mode, status) {
   return steps.map((_, i) => i < idx ? 'done' : i === idx ? 'active' : 'idle')
 }
 
-function BackendToggle({ backend, setBackend }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-      <span style={{ fontSize: '12px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px' }}>Pipeline</span>
-      <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${C.border}` }}>
-        <button
-          onClick={() => setBackend('modal')}
-          style={{ padding: '7px 16px', fontSize: '13px', fontWeight: '600', border: 'none', cursor: 'pointer', background: backend === 'modal' ? C.accent : C.surface, color: backend === 'modal' ? '#000' : C.muted }}
-        >
-          ⚡ Modal
-        </button>
-        <button
-          onClick={() => setBackend('kaggle')}
-          style={{ padding: '7px 16px', fontSize: '13px', fontWeight: '600', border: 'none', cursor: 'pointer', background: backend === 'kaggle' ? C.accent : C.surface, color: backend === 'kaggle' ? '#000' : C.muted }}
-        >
-          🐢 Kaggle
-        </button>
-      </div>
-      <span style={{ fontSize: '11px', color: C.muted }}>
-        {backend === 'modal' ? 'A10G · FlashAttn' : 'T4 · Free quota'}
-      </span>
-    </div>
-  )
-}
+const ENVIRONMENTS = ['HDB Home Office', 'Cafe', 'Outdoor', 'Studio']
 
 export default function Home() {
+  const [videoType, setVideoType] = useState(null) // 1, 2, or 3
   const [prompt, setPrompt]       = useState('')
-  const [avatars, setAvatars]     = useState([])
+  const [actors, setActors]       = useState([])
   const [selectedId, setSelected] = useState(null)
   const [jobId, setJobId]         = useState(null)
   const [jobStatus, setJobStatus] = useState(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
-  const [backend, setBackend]     = useState('modal')  // ← new
 
   const [showGenModal, setShowGenModal] = useState(false)
-  const [genPrefs, setGenPrefs]         = useState({ name: '', gender: '', age: '', ethnicity: '', style: '' })
+  const [genPrefs, setGenPrefs]         = useState({ gender: '', age: '', environment: '', clothing: '' })
   const [generating, setGenerating]     = useState(false)
   const [genStatus, setGenStatus]       = useState(null)
-  const [genAvatarId, setGenAvatarId]   = useState(null)
+  const [genError, setGenError]         = useState(null)
+  const [quota, setQuota]               = useState(null) // { count, limit, remaining }
 
-  useEffect(() => { fetchAvatars() }, [])
+  useEffect(() => { fetchActors(); fetchQuota() }, [])
 
-  async function fetchAvatars() {
-    const res  = await fetch('/api/avatars')
-    const data = await res.json()
-    if (data.avatars) setAvatars(data.avatars)
+  async function fetchActors() {
+    try {
+      const res  = await fetch('/api/actors')
+      const data = await res.json()
+      if (data.actors) setActors(data.actors)
+    } catch (err) {
+      console.error('Failed to fetch actors:', err)
+    }
+  }
+
+  async function fetchQuota() {
+    try {
+      const res  = await fetch('/api/generate-actor')
+      const data = await res.json()
+      setQuota(data)
+    } catch (err) {
+      console.error('Failed to fetch quota:', err)
+    }
   }
 
   function poll(id) {
@@ -145,63 +160,78 @@ export default function Home() {
     }, 15000)
   }
 
-  function pollAvatar(id) {
+  // Polls the actor list until a new file matching the expected filename shows up.
+  function pollNewActor(filename) {
     const iv = setInterval(async () => {
-      const res  = await fetch('/api/avatars')
+      const res  = await fetch('/api/actors')
       const data = await res.json()
-      const found = data.avatars?.find(a => a.id === id)
-      if (found?.status === 'ready') {
+      const found = data.actors?.find(a => a.filename === filename)
+      if (found) {
         clearInterval(iv)
-        setAvatars(data.avatars)
-        setSelected(id)
+        setActors(data.actors)
+        setSelected(found.id)
         setGenerating(false)
         setGenStatus('ready')
         setShowGenModal(false)
-      } else if (found?.status === 'failed') {
-        clearInterval(iv)
-        setGenerating(false)
-        setGenStatus('failed')
+        fetchQuota()
       }
     }, 10000)
+    // Give up after 5 minutes so the UI doesn't spin forever if the GH Action failed
+    setTimeout(() => clearInterval(iv), 5 * 60 * 1000)
   }
 
   async function handleForge() {
     if (!prompt.trim()) return
     setLoading(true)
     setError(null)
-    const res = await fetch('/api/start-job', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, avatar_id: selectedId || null, backend }),  // ← backend added
-    })
-    const data = await res.json()
-    if (data.error) { setError(data.error); setLoading(false); return }
-    setJobId(data.job_id)
-    poll(data.job_id)
+    try {
+      const selectedType = VIDEO_TYPES.find(t => t.id === videoType)
+      const res = await fetch('/api/start-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          avatar_id: selectedType?.needsActor ? selectedId : null,
+          video_type: videoType,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setJobId(data.job_id)
+      poll(data.job_id)
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
   }
 
-  async function handleGeneratePortrait() {
-    const { name, gender, age, ethnicity, style } = genPrefs
-    if (!gender || !age || !style) return
+  async function handleGenerateActor() {
     setGenerating(true)
+    setGenError(null)
     setGenStatus('pending')
-    const res  = await fetch('/api/generate-portrait', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name || 'Avatar', gender, age, ethnicity, style }),
-    })
-    const data = await res.json()
-    if (data.error) { setGenerating(false); setGenStatus('failed'); return }
-    setGenAvatarId(data.avatar_id)
-    pollAvatar(data.avatar_id)
+    try {
+      const res = await fetch('/api/generate-actor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(genPrefs),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      pollNewActor(data.filename)
+    } catch (err) {
+      setGenerating(false)
+      setGenStatus('failed')
+      setGenError(err.message)
+    }
   }
 
-  const ageValid = genPrefs.age.trim() !== '' && !isNaN(Number(genPrefs.age)) && Number(genPrefs.age) > 0 && Number(genPrefs.age) < 120
-  const canGenerate = !generating && genPrefs.gender && ageValid && genPrefs.style
+  const ageValid = genPrefs.age && Number(genPrefs.age) > 0 && Number(genPrefs.age) < 120
+  const canGenerate = !generating && genPrefs.gender && ageValid && genPrefs.environment && (quota?.remaining ?? 1) > 0
 
   const mode   = jobStatus?.pipeline_mode
   const steps  = STEPS[mode] || []
   const states = jobStatus ? getStates(mode, jobStatus.status) : []
+  const currentType = VIDEO_TYPES.find(t => t.id === videoType)
 
   return (
     <div style={S.container}>
@@ -211,55 +241,75 @@ export default function Home() {
       {!jobId && (
         <>
           <div style={S.section}>
-            <div style={S.label}>Avatar (optional)</div>
-            <div style={S.avatarGrid}>
-              <div style={S.noAvatar(selectedId === null)} onClick={() => setSelected(null)}>
-                <span>🎬</span>
-                <span style={{ fontSize: '10px', color: C.muted, marginTop: '4px' }}>None</span>
-              </div>
-
-              {avatars.map(av => (
-                <div key={av.id} style={S.avatarCard(selectedId === av.id)} onClick={() => setSelected(av.id)}>
-                  <img src={av.thumbnail_url} alt={av.name} style={S.avatarImg} />
-                  <div style={S.avatarLabel}>{av.name}</div>
+            <div style={S.label}>1. Choose video type</div>
+            <div style={S.typeRow}>
+              {VIDEO_TYPES.map(t => (
+                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null) }}>
+                  <div style={S.typeTitle}>{t.title}</div>
+                  <div style={S.typeDesc}>{t.desc}</div>
                 </div>
               ))}
-
-              <div
-                style={{ ...S.avatarCard(false), display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', cursor: 'pointer' }}
-                onClick={() => { setShowGenModal(true); setGenStatus(null) }}
-              >
-                <span style={{ fontSize: '22px' }}>＋</span>
-                <span style={{ fontSize: '10px', color: C.muted, marginTop: '4px' }}>New</span>
-              </div>
             </div>
-
-            {selectedId && <div style={{ fontSize: '12px', color: C.accent }}>✓ Avatar selected — pipeline will use this character</div>}
-            {selectedId === null && <div style={{ fontSize: '12px', color: C.muted }}>No avatar — Wan2.1 generates its own characters</div>}
           </div>
 
-          <hr style={S.divider} />
+          {videoType && currentType?.needsActor && (
+            <div style={S.section}>
+              <div style={S.label}>2. Choose an actor</div>
+              <div style={S.avatarGrid}>
+                {actors.map(actor => (
+                  <div key={actor.id} style={S.avatarCard(selectedId === actor.id)} onClick={() => setSelected(actor.id)}>
+                    <img src={actor.thumbnail_url} alt={actor.name} style={S.avatarImg} />
+                    <div style={S.avatarLabel}>{actor.environment} · {actor.gender} · {actor.age}</div>
+                  </div>
+                ))}
 
-          <div style={S.section}>
-            <div style={S.label}>Describe your video</div>
-            <textarea
-              style={S.textarea}
-              placeholder="A woman walking confidently through a neon-lit city at night..."
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-            />
-            <BackendToggle backend={backend} setBackend={setBackend} />
-            <button style={S.button} onClick={handleForge} disabled={loading}>
-              {loading ? 'Forging...' : 'Forge'}
-            </button>
-          </div>
+                <div
+                  style={{ ...S.avatarCard(false), display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '9/16', cursor: 'pointer' }}
+                  onClick={() => { setShowGenModal(true); setGenStatus(null); setGenError(null) }}
+                >
+                  <span style={{ fontSize: '22px' }}>＋</span>
+                  <span style={{ fontSize: '10px', color: C.muted, marginTop: '4px' }}>New Actor</span>
+                </div>
+              </div>
+
+              {selectedId && <div style={{ fontSize: '12px', color: C.accent }}>✓ Actor selected</div>}
+              {!selectedId && <div style={{ fontSize: '12px', color: C.muted }}>Select an actor to continue</div>}
+            </div>
+          )}
+
+          {videoType && (
+            <>
+              <hr style={S.divider} />
+
+              <div style={S.section}>
+                <div style={S.label}>
+                  {videoType === 1 ? '3. Paste the script' : currentType?.needsActor ? '3. Describe the scene' : '2. Describe the scene'}
+                </div>
+                <textarea
+                  style={S.textarea}
+                  placeholder={videoType === 1
+                    ? 'Hey, I\'m running my business smarter now with...'
+                    : 'A woman walking confidently through a neon-lit city at night...'}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                />
+                <button
+                  style={{ ...S.button, opacity: (currentType?.needsActor && !selectedId) ? 0.5 : 1 }}
+                  onClick={handleForge}
+                  disabled={loading || (currentType?.needsActor && !selectedId)}
+                >
+                  {loading ? 'Forging...' : 'Forge'}
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
 
       {jobStatus?.pipeline_mode && (
         <div style={S.section}>
           <div style={S.badge}>
-            {mode === 'avatar_lipsync' ? '🧑 Avatar · Lip Sync' : mode === 'avatar_scene' ? '🧑 Avatar · Scene' : '🎬 Scene'}
+            {mode === 'avatar_lipsync' ? '🧑 Talking Actor' : mode === 'avatar_scene' ? '🧑 Scene · Actor' : '🎬 Scene'}
           </div>
           <div style={S.estimate}>{ESTIMATES[mode]}</div>
           {steps.map((s, i) => (
@@ -292,22 +342,19 @@ export default function Home() {
       {showGenModal && (
         <div style={S.modal}>
           <div style={S.modalBox}>
-            <h2 style={S.modalTitle}>Generate New Avatar</h2>
-            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '20px' }}>
-              Takes ~10–15 min on Kaggle GPU. You can close this and it will appear in the gallery when ready.
+            <h2 style={S.modalTitle}>Generate New Actor</h2>
+            <p style={{ color: C.muted, fontSize: '13px', marginBottom: '8px' }}>
+              Generates a fresh actor photo via PixVerse. Takes ~1–2 min.
             </p>
-
-            <div style={S.fieldLabel}>Name</div>
-            <input
-              style={S.input}
-              placeholder="e.g. Sarah"
-              value={genPrefs.name}
-              onChange={e => setGenPrefs(p => ({ ...p, name: e.target.value }))}
-            />
+            {quota && (
+              <div style={S.quotaBadge}>
+                {quota.remaining} of {quota.limit} generations left today
+              </div>
+            )}
 
             <div style={S.fieldLabel}>Gender</div>
             <div style={S.optionRow}>
-              {['Female', 'Male', 'Neutral'].map(g => (
+              {['Female', 'Male'].map(g => (
                 <button key={g} style={optionBtn(genPrefs.gender === g)} onClick={() => setGenPrefs(p => ({ ...p, gender: g }))}>{g}</button>
               ))}
             </div>
@@ -317,41 +364,42 @@ export default function Home() {
               style={{ ...S.input, width: '120px' }}
               placeholder="e.g. 28"
               type="number"
-              min="1"
-              max="119"
+              min="18"
+              max="65"
               value={genPrefs.age}
               onChange={e => setGenPrefs(p => ({ ...p, age: e.target.value }))}
             />
 
-            <div style={S.fieldLabel}>Ethnicity <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
+            <div style={S.fieldLabel}>Environment</div>
             <div style={S.optionRow}>
-              {['Asian', 'South Asian', 'Southeast Asian', 'Black', 'Hispanic', 'Middle Eastern', 'White'].map(eth => (
-                <button key={eth} style={optionBtn(genPrefs.ethnicity === eth)} onClick={() => setGenPrefs(p => ({ ...p, ethnicity: p.ethnicity === eth ? '' : eth }))}>{eth}</button>
+              {ENVIRONMENTS.map(env => (
+                <button key={env} style={optionBtn(genPrefs.environment === env)} onClick={() => setGenPrefs(p => ({ ...p, environment: env }))}>{env}</button>
               ))}
             </div>
 
-            <div style={S.fieldLabel}>Style</div>
-            <div style={S.optionRow}>
-              {['Professional', 'Casual', 'Creative'].map(s => (
-                <button key={s} style={optionBtn(genPrefs.style === s)} onClick={() => setGenPrefs(p => ({ ...p, style: s }))}>{s}</button>
-              ))}
-            </div>
+            <div style={S.fieldLabel}>Clothing <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
+            <input
+              style={S.input}
+              placeholder="e.g. casual smart blouse"
+              value={genPrefs.clothing}
+              onChange={e => setGenPrefs(p => ({ ...p, clothing: e.target.value }))}
+            />
 
             {genStatus === 'pending' && (
               <div style={{ color: C.accent, fontSize: '13px', margin: '12px 0' }}>
-                ⏳ Generating... this takes ~10–15 min. Gallery updates automatically.
+                ⏳ Generating... this takes ~1–2 min. Gallery updates automatically.
               </div>
             )}
             {genStatus === 'failed' && (
               <div style={{ color: C.error, fontSize: '13px', margin: '12px 0' }}>
-                Generation failed. Check GitHub Actions logs.
+                {genError || 'Generation failed.'}
               </div>
             )}
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
               <button
                 style={{ ...S.button, marginTop: 0, flex: 1, opacity: canGenerate ? 1 : 0.5 }}
-                onClick={handleGeneratePortrait}
+                onClick={handleGenerateActor}
                 disabled={!canGenerate}
               >
                 {generating ? 'Generating...' : 'Generate'}
