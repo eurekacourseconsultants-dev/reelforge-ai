@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { AwsClient } from 'aws4fetch'
 
 const GH_REPO_OWNER = process.env.GH_REPO_OWNER || process.env.GITHUB_REPO_OWNER
 const GH_REPO_NAME   = process.env.GH_REPO_NAME  || process.env.GITHUB_REPO_NAME
@@ -8,7 +9,6 @@ const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID
 const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY_ID
 const R2_SECRET_KEY = process.env.R2_SECRET_ACCESS_KEY
 const R2_BUCKET     = process.env.R2_BUCKET_NAME
-const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL
 
 // --- Daily limit config ---
 // PixVerse: 90 credits/day per account, image gen = 5 credits/image.
@@ -22,46 +22,48 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10) // YYYY-MM-DD, UTC
 }
 
-async function getR2Client() {
-  const { S3Client } = await import('@aws-sdk/client-s3')
-  return new S3Client({
+function getR2Client() {
+  return new AwsClient({
+    accessKeyId: R2_ACCESS_KEY,
+    secretAccessKey: R2_SECRET_KEY,
+    service: 's3',
     region: 'auto',
-    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId: R2_ACCESS_KEY, secretAccessKey: R2_SECRET_KEY },
   })
+}
+
+function r2ObjectUrl(key) {
+  return `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET}/${key}`
 }
 
 // Counter is persisted as a small JSON object in R2 itself — avoids needing
 // a database just for this. { date: 'YYYY-MM-DD', count: number }
 async function readCounter() {
   try {
-    const { GetObjectCommand } = await import('@aws-sdk/client-s3')
-    const s3 = await getR2Client()
-    const res = await s3.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: COUNTER_KEY }))
-    const text = await res.Body.transformToString()
-    const data = JSON.parse(text)
+    const client = getR2Client()
+    const res = await client.fetch(r2ObjectUrl(COUNTER_KEY))
+    if (!res.ok) {
+      return { date: todayKey(), count: 0 } // no counter file yet, or other error
+    }
+    const data = await res.json()
     if (data.date !== todayKey()) {
       return { date: todayKey(), count: 0 } // new day, reset
     }
     return data
   } catch {
-    return { date: todayKey(), count: 0 } // no counter file yet
+    return { date: todayKey(), count: 0 }
   }
 }
 
 async function writeCounter(data) {
-  const { PutObjectCommand } = await import('@aws-sdk/client-s3')
-  const s3 = await getR2Client()
-  await s3.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
-    Key: COUNTER_KEY,
-    Body: JSON.stringify(data),
-    ContentType: 'application/json',
-  }))
+  const client = getR2Client()
+  await client.fetch(r2ObjectUrl(COUNTER_KEY), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
 }
 
 // Builds the PixVerse prompt text from structured fields.
-// Mirrors the manually-written prompts used throughout this project so far.
 function buildPrompt({ gender, age, environment, clothing }) {
   const genderWord = gender === 'Male' ? 'man' : gender === 'Female' ? 'woman' : 'person'
   const envText = ENVIRONMENT_TEXT[environment] || environment

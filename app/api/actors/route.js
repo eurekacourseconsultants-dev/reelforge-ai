@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { AwsClient } from 'aws4fetch'
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID
 const R2_ACCESS_KEY  = process.env.R2_ACCESS_KEY_ID
@@ -32,25 +33,60 @@ function parseActorFilename(filename) {
   }
 }
 
+// Minimal XML parsing for the S3 ListObjectsV2 response — avoids pulling in
+// an XML library just for this. R2/S3 list responses are simple enough that
+// a regex-based extraction is reliable here.
+function parseListObjectsXml(xml) {
+  const contents = []
+  const contentBlocks = xml.match(/<Contents>[\s\S]*?<\/Contents>/g) || []
+  for (const block of contentBlocks) {
+    const key = block.match(/<Key>(.*?)<\/Key>/)?.[1]
+    const size = block.match(/<Size>(.*?)<\/Size>/)?.[1]
+    const lastModified = block.match(/<LastModified>(.*?)<\/LastModified>/)?.[1]
+    if (key) {
+      contents.push({
+        Key: decodeXmlEntities(key),
+        Size: size ? Number(size) : 0,
+        LastModified: lastModified,
+      })
+    }
+  }
+  return contents
+}
+
+function decodeXmlEntities(str) {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
 export async function GET() {
   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET || !R2_PUBLIC_URL) {
     return NextResponse.json({ error: 'R2 environment variables are not fully configured' }, { status: 500 })
   }
 
   try {
-    const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3')
-    const s3 = new S3Client({
+    const client = new AwsClient({
+      accessKeyId: R2_ACCESS_KEY,
+      secretAccessKey: R2_SECRET_KEY,
+      service: 's3',
       region: 'auto',
-      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId: R2_ACCESS_KEY, secretAccessKey: R2_SECRET_KEY },
     })
 
-    const result = await s3.send(new ListObjectsV2Command({
-      Bucket: R2_BUCKET,
-      Prefix: 'avatars/',
-    }))
+    const endpoint = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+    const url = `${endpoint}/${R2_BUCKET}?list-type=2&prefix=avatars/`
 
-    const objects = result.Contents || []
+    const res = await client.fetch(url)
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`R2 list request failed: ${res.status} — ${text}`)
+    }
+
+    const xml = await res.text()
+    const objects = parseListObjectsXml(xml)
 
     const actors = objects
       .filter(obj => /\.(jpg|jpeg|png|webp)$/i.test(obj.Key))
