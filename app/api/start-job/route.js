@@ -77,6 +77,7 @@ export async function POST(request) {
             Authorization: `Bearer ${pat}`,
             "Content-Type": "application/json",
             Accept: "application/vnd.github.v3+json",
+            "User-Agent": "reelforge-ai",
           },
           body: JSON.stringify({
             ref: "main",
@@ -149,6 +150,7 @@ export async function POST(request) {
           Authorization: `Bearer ${pat}`,
           "Content-Type": "application/json",
           Accept: "application/vnd.github.v3+json",
+          "User-Agent": "reelforge-ai",
         },
         body: JSON.stringify({
           ref: "main",
