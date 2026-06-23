@@ -74,6 +74,7 @@ export default function VideosPage() {
 
   return (
     <div style={S.container}>
+      <a href="/" style={{ color: C.accent, fontSize: '13px', fontWeight: '600', textDecoration: 'none', display: 'inline-block', marginBottom: '16px' }}>← Home</a>
       <div style={S.title}>Generated Videos</div>
       <div style={S.sub}>All videos currently stored in R2</div>
 
