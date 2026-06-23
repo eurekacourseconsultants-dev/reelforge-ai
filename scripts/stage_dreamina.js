@@ -11,13 +11,6 @@ const ACCOUNTS = [
   'unowebscrapper@gmail.com',
   'zippscraper@gmail.com'
 ]
-const { S3Client: S3ClientAccounts, GetObjectCommand, PutObjectCommand: PutObjectCommandAccounts } = require('@aws-sdk/client-s3')
-const r2Accounts = new S3ClientAccounts({
-  region: 'auto',
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }
-})
-
 const JOB_ID = process.env.JOB_ID
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -33,41 +26,15 @@ async function patchSupabase(data) {
   } catch (e) { console.error('Supabase patch failed:', e.message) }
 }
 
-async function getUsage() {
-  const today = new Date().toISOString().slice(0, 10)
-  let usage = { date: today, accounts: {} }
-  try {
-    const res = await r2Accounts.send(new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: 'account-usage/dreamina.json' }))
-    const text = await res.Body.transformToString()
-    const parsed = JSON.parse(text)
-    if (parsed.date === today) usage = parsed
-  } catch (e) { /* first run or new day */ }
-  return { usage, today }
-}
-
-async function markAccountUsed(account, usage, today) {
-  usage.date = today
-  usage.accounts[account] = true
-  await r2Accounts.send(new PutObjectCommandAccounts({
-    Bucket: process.env.R2_BUCKET,
-    Key: 'account-usage/dreamina.json',
-    Body: JSON.stringify(usage),
-    ContentType: 'application/json'
-  }))
-  console.log('Account marked as used:', account)
-}
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 ;(async () => {
-  const { usage, today } = await getUsage()
   let DREAMINA_EMAIL = null
   let browser = null
   let page = null
 
   // Try accounts in order until one has enough credits, or all are exhausted
   for (const candidate of ACCOUNTS) {
-    if (usage.accounts[candidate]) continue
     console.log('Trying account:', candidate)
 
     browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,800'], defaultViewport: { width: 1280, height: 800 } })
@@ -119,8 +86,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     console.log('Credit balance for', candidate, ':', creditBalance)
 
     if (creditBalance === null || creditBalance < 119) {
-      console.error(`Insufficient or unreadable credits (${creditBalance}) for account ${candidate}. Marking used, trying next account.`)
-      await markAccountUsed(candidate, usage, today)
+      console.error(`Insufficient credits (${creditBalance}) for account ${candidate}. Trying next account.`)
       await browser.close()
       continue
     }
@@ -239,7 +205,6 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   })
   await page.mouse.click(generateRect.x, generateRect.y)
   console.log('Generate clicked at', generateRect)
-  await markAccountUsed(DREAMINA_EMAIL, usage, today)
   await patchSupabase({ status: 'video_ready' })
 
   // Intercept network for video output URL
