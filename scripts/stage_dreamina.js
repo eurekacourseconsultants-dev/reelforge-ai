@@ -177,6 +177,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   const scriptEl = await page.$('p[data-paragraph-placeholder="Enter what the avatar should say"]')
   if (!scriptEl) throw new Error('Script textarea not found — voice modal may still be open')
   await scriptEl.click()
+  await sleep(300)
   await page.keyboard.type(SCRIPT_TEXT, { delay: 20 })
   console.log('Script entered')
   await sleep(1000)
@@ -186,6 +187,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   const actionEl = await page.$('p[data-paragraph-placeholder="(Optional) Describe how the avatar should move or act"]')
   if (actionEl) {
     await actionEl.click()
+    await sleep(300)
     await page.keyboard.type(ACTION_TEXT, { delay: 20 })
     console.log('Action entered')
     await sleep(1000)
