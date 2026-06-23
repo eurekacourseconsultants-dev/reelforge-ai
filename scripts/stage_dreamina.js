@@ -47,7 +47,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   const { account: DREAMINA_EMAIL, usage, today } = await getAvailableAccount()
   console.log('Using account:', DREAMINA_EMAIL)
 
-  const browser = await puppeteer.launch({ headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox'], defaultViewport: null })
+  const browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox'], defaultViewport: null })
   const page = await browser.newPage()
 
   console.log('Navigating...')
@@ -79,6 +79,22 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   })
   await sleep(1500)
 
+  // Check credit balance — abort early if too low to avoid a wasted run
+  let creditBalance = null
+  try {
+    creditBalance = await page.evaluate(() => {
+      const el = document.querySelector('div.credit-amount-text-kJNIlf')
+      return el ? parseInt(el.textContent.trim(), 10) : null
+    })
+  } catch (e) { /* selector not found, continue anyway */ }
+  console.log('Credit balance:', creditBalance)
+  if (creditBalance !== null && creditBalance < 119) {
+    console.error(`Insufficient credits (${creditBalance}) for account ${DREAMINA_EMAIL}. Marking used and exiting.`)
+    await markAccountUsed(DREAMINA_EMAIL, usage, today)
+    await browser.close()
+    process.exit(1)
+  }
+
   // Navigate directly to AI Avatar page
   await page.goto('https://dreamina.capcut.com/ai-tool/generate?type=digitalHuman&workspace=0', { waitUntil: 'networkidle2', timeout: 60000 })
   console.log('On AI Avatar page')
@@ -90,8 +106,20 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   const VOICE_NAME  = process.env.VOICE_NAME
   const VOICE_TONE  = process.env.VOICE_TONE
 
+  let actorImagePath = ACTOR_IMAGE
+  if (/^https?:\/\//.test(ACTOR_IMAGE)) {
+    const https = require('https')
+    const http = require('http')
+    const fs = require('fs')
+    actorImagePath = '/tmp/actor_image.jpg'
+    await new Promise((resolve, reject) => {
+      const client = ACTOR_IMAGE.startsWith('https') ? https : http
+      const file = fs.createWriteStream(actorImagePath)
+      client.get(ACTOR_IMAGE, res => { res.pipe(file); file.on('finish', resolve) }).on('error', reject)
+    })
+  }
   const [fileInput] = await page.$$(  'input.file-input-JBLArm')
-  await fileInput.uploadFile(ACTOR_IMAGE)
+  await fileInput.uploadFile(actorImagePath)
   console.log('Actor image uploaded')
   await sleep(3000)
 
@@ -137,7 +165,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   await sleep(1000)
 
   // Fill action textarea
-  const ACTION_TEXT = process.env.ACTION_TEXT || 'Keep right hand completely out of frame at all times. Left hand gently pushes hair behind ear once midway through.'
+  const ACTION_TEXT = process.env.ACTION_TEXT || 'Maintain direct eye contact with camera at all times.'
   const actionEl = await page.$('p[data-paragraph-placeholder="(Optional) Describe how the avatar should move or act"]')
   if (actionEl) {
     await actionEl.click()

@@ -1,0 +1,61 @@
+name: Dreamina Talking Actor Generation
+
+on:
+  workflow_dispatch:
+    inputs:
+      actor_image_url:
+        description: 'R2 public URL of the actor photo'
+        required: true
+        type: string
+      script_text:
+        description: 'What the avatar should say (max 240 chars, no dashes)'
+        required: true
+        type: string
+      voice_name:
+        required: true
+        type: string
+      voice_tone:
+        description: 'Female or Male'
+        required: true
+        type: string
+      action_text:
+        required: false
+        type: string
+      video_title:
+        required: false
+        type: string
+      job_id:
+        required: false
+        type: string
+
+jobs:
+  generate-talking-actor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Dreamina talking actor generation (headless)
+        env:
+          HEADLESS: 'true'
+          ACTOR_IMAGE: ${{ inputs.actor_image_url }}
+          SCRIPT_TEXT: ${{ inputs.script_text }}
+          VOICE_NAME: ${{ inputs.voice_name }}
+          VOICE_TONE: ${{ inputs.voice_tone }}
+          ACTION_TEXT: ${{ inputs.action_text }}
+          VIDEO_TITLE: ${{ inputs.video_title }}
+          JOB_ID: ${{ inputs.job_id }}
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+        run: node scripts/stage_dreamina.js
