@@ -100,6 +100,13 @@ const VIDEO_TYPES = [
   { id: 3, mode: 'scene',          title: 'Fresh Scene',   desc: 'Describe everything, actor generated for you', needsActor: false },
 ]
 
+const VOICES_BY_GENDER = {
+  female: ['Matilda', 'Chill Girl', 'Sarah', 'Valley Girl', 'Lily'],
+  male:   ['Old Style Advertising Male', 'George', 'Charlie', 'Bill', 'Chris'],
+}
+
+const DEFAULT_ACTION_TEXT = 'Maintain direct eye contact with camera at all times.'
+
 function getStates(mode, status) {
   const steps = STEPS[mode] || STEPS.scene
   const map   = STATUS_IDX[mode] || STATUS_IDX.scene
@@ -107,20 +114,22 @@ function getStates(mode, status) {
   return steps.map((_, i) => i < idx ? 'done' : i === idx ? 'active' : 'idle')
 }
 
-const ENVIRONMENTS = ['HDB Home Office', 'Cafe', 'Outdoor', 'Studio']
+
 
 export default function Home() {
   const [videoType, setVideoType] = useState(null) // 1, 2, or 3
   const [prompt, setPrompt]       = useState('')
   const [actors, setActors]       = useState([])
   const [selectedId, setSelected] = useState(null)
+  const [voiceName, setVoiceName] = useState('')
+  const [actionText, setActionText] = useState(DEFAULT_ACTION_TEXT)
   const [jobId, setJobId]         = useState(null)
   const [jobStatus, setJobStatus] = useState(null)
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
 
   const [showGenModal, setShowGenModal] = useState(false)
-  const [genPrefs, setGenPrefs]         = useState({ gender: '', age: '', environment: '', clothing: '' })
+  const [genPrefs, setGenPrefs]         = useState({ gender: '', age: '', environment: '', clothing: '', ethnicity: '' })
   const [generating, setGenerating]     = useState(false)
   const [genStatus, setGenStatus]       = useState(null)
   const [genError, setGenError]         = useState(null)
@@ -186,14 +195,23 @@ export default function Home() {
     setError(null)
     try {
       const selectedType = VIDEO_TYPES.find(t => t.id === videoType)
+      const payload = videoType === 1
+        ? {
+            video_type: 1,
+            avatar_id: selectedId,
+            script_text: prompt,
+            voice_name: voiceName,
+            action_text: actionText,
+          }
+        : {
+            prompt,
+            avatar_id: selectedType?.needsActor ? selectedId : null,
+            video_type: videoType,
+          }
       const res = await fetch('/api/start-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          avatar_id: selectedType?.needsActor ? selectedId : null,
-          video_type: videoType,
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -244,7 +262,7 @@ export default function Home() {
             <div style={S.label}>1. Choose video type</div>
             <div style={S.typeRow}>
               {VIDEO_TYPES.map(t => (
-                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null) }}>
+                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null); setVoiceName('') }}>
                   <div style={S.typeTitle}>{t.title}</div>
                   <div style={S.typeDesc}>{t.desc}</div>
                 </div>
@@ -257,7 +275,7 @@ export default function Home() {
               <div style={S.label}>2. Choose an actor</div>
               <div style={S.avatarGrid}>
                 {actors.map(actor => (
-                  <div key={actor.id} style={S.avatarCard(selectedId === actor.id)} onClick={() => setSelected(actor.id)}>
+                  <div key={actor.id} style={S.avatarCard(selectedId === actor.id)} onClick={() => { setSelected(actor.id); setVoiceName('') }}>
                     <img src={actor.thumbnail_url} alt={actor.name} style={S.avatarImg} />
                     <div style={S.avatarLabel}>{actor.environment} · {actor.gender} · {actor.age}</div>
                   </div>
@@ -281,9 +299,20 @@ export default function Home() {
             <>
               <hr style={S.divider} />
 
+              {videoType === 1 && selectedId && (
+                <div style={S.section}>
+                  <div style={S.label}>3. Choose a voice</div>
+                  <div style={S.optionRow}>
+                    {(VOICES_BY_GENDER[actors.find(a => a.id === selectedId)?.gender] || []).map(v => (
+                      <button key={v} style={optionBtn(voiceName === v)} onClick={() => setVoiceName(v)}>{v}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div style={S.section}>
                 <div style={S.label}>
-                  {videoType === 1 ? '3. Paste the script' : currentType?.needsActor ? '3. Describe the scene' : '2. Describe the scene'}
+                  {videoType === 1 ? '4. Paste the script' : currentType?.needsActor ? '3. Describe the scene' : '2. Describe the scene'}
                 </div>
                 <textarea
                   style={S.textarea}
@@ -291,12 +320,33 @@ export default function Home() {
                     ? 'Hey, I\'m running my business smarter now with...'
                     : 'A woman walking confidently through a neon-lit city at night...'}
                   value={prompt}
+                  maxLength={videoType === 1 ? 240 : undefined}
                   onChange={e => setPrompt(e.target.value)}
                 />
+                {videoType === 1 && (
+                  <div style={{ fontSize: '12px', color: prompt.length >= 240 ? C.error : C.muted, textAlign: 'right', marginTop: '4px' }}>
+                    {prompt.length} / 240
+                  </div>
+                )}
+
+                {videoType === 1 && (
+                  <>
+                    <div style={{ ...S.fieldLabel, marginTop: '16px' }}>Action <span style={{ color: C.muted, fontWeight: '400' }}>(optional, editable)</span></div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px' }}>
+                      Tip: AI struggles with hands — keep them out of frame/hidden if possible.
+                    </div>
+                    <textarea
+                      style={{ ...S.textarea, minHeight: '60px' }}
+                      value={actionText}
+                      onChange={e => setActionText(e.target.value)}
+                    />
+                  </>
+                )}
+
                 <button
-                  style={{ ...S.button, opacity: (currentType?.needsActor && !selectedId) ? 0.5 : 1 }}
+                  style={{ ...S.button, opacity: (currentType?.needsActor && !selectedId) || (videoType === 1 && !voiceName) ? 0.5 : 1 }}
                   onClick={handleForge}
-                  disabled={loading || (currentType?.needsActor && !selectedId)}
+                  disabled={loading || (currentType?.needsActor && !selectedId) || (videoType === 1 && !voiceName)}
                 >
                   {loading ? 'Forging...' : 'Forge'}
                 </button>
@@ -371,11 +421,20 @@ export default function Home() {
             />
 
             <div style={S.fieldLabel}>Environment</div>
-            <div style={S.optionRow}>
-              {ENVIRONMENTS.map(env => (
-                <button key={env} style={optionBtn(genPrefs.environment === env)} onClick={() => setGenPrefs(p => ({ ...p, environment: env }))}>{env}</button>
-              ))}
-            </div>
+            <input
+              style={S.input}
+              placeholder="e.g. a cozy cafe, a park, inside a car"
+              value={genPrefs.environment}
+              onChange={e => setGenPrefs(p => ({ ...p, environment: e.target.value }))}
+            />
+
+            <div style={S.fieldLabel}>Ethnicity <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
+            <input
+              style={S.input}
+              placeholder="e.g. Asian, South Asian, Caucasian"
+              value={genPrefs.ethnicity}
+              onChange={e => setGenPrefs(p => ({ ...p, ethnicity: e.target.value }))}
+            />
 
             <div style={S.fieldLabel}>Clothing <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
             <input
