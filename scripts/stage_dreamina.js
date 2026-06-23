@@ -136,6 +136,16 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   console.log('Script entered')
   await sleep(1000)
 
+  // Fill action textarea
+  const ACTION_TEXT = process.env.ACTION_TEXT || 'Keep right hand completely out of frame at all times. Left hand gently pushes hair behind ear once midway through.'
+  const actionEl = await page.$('p[data-paragraph-placeholder="(Optional) Describe how the avatar should move or act"]')
+  if (actionEl) {
+    await actionEl.click()
+    await page.keyboard.type(ACTION_TEXT, { delay: 20 })
+    console.log('Action entered')
+    await sleep(1000)
+  }
+
   // Set aspect ratio
   const ASPECT_RATIO = process.env.ASPECT_RATIO || '9:16'
   await page.evaluate(() => {
@@ -210,7 +220,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
   page.on('response', async (response) => {
     const url = response.url()
-    if ((url.includes('.mp4') || url.includes('video')) && !url.includes('icon') && !url.includes('logo') && !url.includes('thumbnail')) {
+    if (url.includes('v16-cc.capcut.com') && url.includes('tos-alisg-ve-14178-sg') && url.includes('mime_type=video_mp4')) {
       console.log('VIDEO URL CAPTURED:', url)
       await downloadAndUpload(url).catch(e => console.error('Upload error:', e))
     }
