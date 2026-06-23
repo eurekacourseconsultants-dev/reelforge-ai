@@ -96,6 +96,11 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     console.log('Logged in. Waiting...')
     await sleep(5000)
 
+    // Dismiss first popup (click anywhere to close)
+    await page.mouse.click(100, 100)
+    await sleep(1500)
+
+    // Dismiss second modal (X button)
     await page.evaluate(() => {
       const btn = document.querySelector('button.close-icon-wrapper-TApiiy')
       if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
@@ -105,15 +110,16 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     // Check credit balance
     let creditBalance = null
     try {
+      await page.waitForSelector('div.credit-amount-text-kJNIlf', { timeout: 10000 })
       creditBalance = await page.evaluate(() => {
         const el = document.querySelector('div.credit-amount-text-kJNIlf')
         return el ? parseInt(el.textContent.trim(), 10) : null
       })
-    } catch (e) { /* selector not found, continue anyway */ }
+    } catch (e) { console.error('Credit selector not found:', e.message) }
     console.log('Credit balance for', candidate, ':', creditBalance)
 
-    if (creditBalance !== null && creditBalance < 119) {
-      console.error(`Insufficient credits (${creditBalance}) for account ${candidate}. Marking used, trying next account.`)
+    if (creditBalance === null || creditBalance < 119) {
+      console.error(`Insufficient or unreadable credits (${creditBalance}) for account ${candidate}. Marking used, trying next account.`)
       await markAccountUsed(candidate, usage, today)
       await browser.close()
       continue
@@ -155,14 +161,17 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
       client.get(ACTOR_IMAGE, res => { res.pipe(file); file.on('finish', resolve) }).on('error', reject)
     })
   }
-  const [fileInput] = await page.$$(  'input.file-input-JBLArm')
-  await fileInput.uploadFile(actorImagePath)
-  console.log('Actor image uploaded')
-  await sleep(3000)
-
+  const [fileInput] = await page.$$('input.file-input-JBLArm')
+  try {
+    await fileInput.uploadFile(actorImagePath)
+    console.log('Actor image uploaded')
+  } catch (e) {
+    console.error('Upload failed:', e.message)
+  }
   // Click the voice upload div to open voice selector menu
   await page.evaluate(() => {
-    const voiceDiv = document.querySelector('div.reference-upload-hwAs1s')
+    const voiceDivs = document.querySelectorAll('div.reference-upload-hwAs1s')
+    const voiceDiv = voiceDivs[1]
     if (voiceDiv) voiceDiv.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
   })
   console.log('Voice selector opened')
@@ -211,25 +220,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     await sleep(1000)
   }
 
-  // Set aspect ratio
-  const ASPECT_RATIO = process.env.ASPECT_RATIO || '9:16'
-  await page.evaluate(() => {
-    const btn = Array.from(document.querySelectorAll('button.toolbar-button-oJZmTI'))
-      .find(b => b.textContent.includes('Auto'))
-    if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-    else console.error('Auto button not found')
-  })
-  await sleep(1000)
-  await page.evaluate((ratio) => {
-    const opt = Array.from(document.querySelectorAll('div.radio-content-AC8g35'))
-      .find(d => d.querySelector('span.label-OsQhtD').textContent.trim() === ratio)
-    if (opt) opt.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-    else console.error('Aspect ratio not found:', ratio)
-  }, ASPECT_RATIO)
-  await sleep(500)
-  await page.mouse.click(100, 100)
-  console.log('Aspect ratio set to', ASPECT_RATIO)
-  await sleep(1000)
+  // Aspect ratio left on default (Auto) — Dreamina picks the right ratio automatically
 
   // Wait for uploads to settle
   console.log('Waiting for uploads to settle...')
