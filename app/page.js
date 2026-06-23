@@ -359,26 +359,24 @@ export default function Home() {
         </>
       )}
 
-      {jobStatus?.pipeline_mode && (
+      {jobId && jobStatus?.status !== 'failed' && jobStatus?.status !== 'complete' && (
         <div style={S.section}>
-          <div style={S.badge}>
-            {mode === 'avatar_lipsync' ? '🧑 Talking Actor' : mode === 'avatar_scene' ? '🧑 Scene · Actor' : '🎬 Scene'}
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>⏳</div>
+            <div style={{ fontSize: '18px', fontWeight: '700', color: C.text, marginBottom: '8px' }}>Generating your video...</div>
+            <div style={{ fontSize: '13px', color: C.muted }}>This usually takes 10–15 minutes. You can close this tab and check the Video Library later.</div>
           </div>
-          <div style={S.estimate}>{ESTIMATES[mode]}</div>
-          {steps.map((s, i) => (
-            <div key={s} style={S.stepRow(states[i])}>
-              <span style={{ fontSize: '16px' }}>{states[i] === 'done' ? '✓' : states[i] === 'active' ? '⏳' : '○'}</span>
-              <span>{s}</span>
-            </div>
-          ))}
         </div>
       )}
 
       {jobStatus?.status === 'complete' && (
-        <>
-          <video style={S.video} src={jobStatus.final_url} controls playsInline />
-          <a style={S.downloadLink} href={jobStatus.final_url} download>⬇ Download Video</a>
-        </>
+        <div style={S.section}>
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>✅</div>
+            <div style={{ fontSize: '18px', fontWeight: '700', color: C.text, marginBottom: '16px' }}>Video ready!</div>
+            <a href="/videos" style={{ ...S.button, textDecoration: 'none', display: 'inline-block' }}>📁 Go to Video Library</a>
+          </div>
+        </div>
       )}
 
       {jobStatus?.status === 'failed' && (
