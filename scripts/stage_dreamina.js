@@ -208,7 +208,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
       client.get(url, res => { res.pipe(file); file.on('finish', resolve) }).on('error', reject)
     })
     const buffer = fs.readFileSync(tmpPath)
-    const filename = `generated-videos/${Date.now()}.mp4`
+    const actor = (process.env.ACTOR_IMAGE || 'unknown').split('/').pop().replace('.jpg','').replace('.jpeg','')
+    const title = (process.env.VIDEO_TITLE || 'video').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+    const timestamp = new Date().toISOString().replace(/[-:T]/g,'').slice(0,14)
+    const filename = `generated-videos/${actor}_${title}_${timestamp}.mp4`
     await r2.send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET,
       Key: filename,
@@ -216,6 +219,8 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
       ContentType: 'video/mp4'
     }))
     console.log('Uploaded to R2:', filename)
+    await browser.close()
+    process.exit(0)
   }
 
   page.on('response', async (response) => {
