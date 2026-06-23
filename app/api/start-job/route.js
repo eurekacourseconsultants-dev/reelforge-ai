@@ -58,7 +58,6 @@ export async function POST(request) {
         .from("jobs")
         .insert({
           prompt: script_text,
-          avatar_id: avatar_id,
           pipeline_mode: "avatar_lipsync",
           backend: "dreamina",
           status: "pending",
