@@ -70,7 +70,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
     if (usage.accounts[candidate]) continue
     console.log('Trying account:', candidate)
 
-    browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox'], defaultViewport: null })
+    browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,800'], defaultViewport: { width: 1280, height: 800 } })
     page = await browser.newPage()
 
     console.log('Navigating...')
