@@ -255,6 +255,9 @@ export default function Home() {
     <div style={S.container}>
       <div style={S.wordmark}>ReelForge AI</div>
       <div style={S.sub}>Free AI video generation</div>
+      <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        <a href="/videos" style={{ color: C.accent, fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>📁 Video Library</a>
+      </div>
 
       {!jobId && (
         <>
