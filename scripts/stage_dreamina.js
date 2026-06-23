@@ -203,8 +203,13 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   console.log('Voice selected:', VOICE_NAME)
   await sleep(1000)
 
+  // Close voice selector modal by pressing Escape
+  await page.keyboard.press('Escape')
+  await sleep(1000)
+
   // Fill script textarea (ProseMirror)
   const scriptEl = await page.$('p[data-paragraph-placeholder="Enter what the avatar should say"]')
+  if (!scriptEl) throw new Error('Script textarea not found — voice modal may still be open')
   await scriptEl.click()
   await page.keyboard.type(SCRIPT_TEXT, { delay: 20 })
   console.log('Script entered')
