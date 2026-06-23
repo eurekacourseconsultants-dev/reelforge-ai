@@ -17,7 +17,23 @@ const r2Accounts = new S3ClientAccounts({
   endpoint: process.env.R2_ENDPOINT,
   credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY }
 })
-async function getAvailableAccount() {
+
+const JOB_ID = process.env.JOB_ID
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+async function patchSupabase(data) {
+  if (!JOB_ID || !SUPABASE_URL || !SUPABASE_KEY) return
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/jobs?id=eq.${JOB_ID}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  } catch (e) { console.error('Supabase patch failed:', e.message) }
+}
+
+async function getUsage() {
   const today = new Date().toISOString().slice(0, 10)
   let usage = { date: today, accounts: {} }
   try {
@@ -26,10 +42,9 @@ async function getAvailableAccount() {
     const parsed = JSON.parse(text)
     if (parsed.date === today) usage = parsed
   } catch (e) { /* first run or new day */ }
-  const account = ACCOUNTS.find(a => !usage.accounts[a])
-  if (!account) { console.error('All Dreamina accounts exhausted for today'); process.exit(1) }
-  return { account, usage, today }
+  return { usage, today }
 }
+
 async function markAccountUsed(account, usage, today) {
   usage.date = today
   usage.accounts[account] = true
@@ -41,59 +56,81 @@ async function markAccountUsed(account, usage, today) {
   }))
   console.log('Account marked as used:', account)
 }
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 ;(async () => {
-  const { account: DREAMINA_EMAIL, usage, today } = await getAvailableAccount()
-  console.log('Using account:', DREAMINA_EMAIL)
+  const { usage, today } = await getUsage()
+  let DREAMINA_EMAIL = null
+  let browser = null
+  let page = null
 
-  const browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox'], defaultViewport: null })
-  const page = await browser.newPage()
+  // Try accounts in order until one has enough credits, or all are exhausted
+  for (const candidate of ACCOUNTS) {
+    if (usage.accounts[candidate]) continue
+    console.log('Trying account:', candidate)
 
-  console.log('Navigating...')
-  await page.goto('https://dreamina.capcut.com/ai-tool/home?need_login=true', { waitUntil: 'networkidle2', timeout: 60000 })
-  await sleep(3000)
+    browser = await puppeteer.launch({ headless: process.env.HEADLESS !== 'false', args: ['--no-sandbox', '--disable-setuid-sandbox'], defaultViewport: null })
+    page = await browser.newPage()
 
-  await page.evaluate(() => {
-    const span = Array.from(document.querySelectorAll('span.lv_new_third_part_sign_in_expand-label'))
-      .find(s => s.textContent.trim() === 'Continue with email')
-    if (span) span.parentElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-  })
-  await sleep(8000)
+    console.log('Navigating...')
+    await page.goto('https://dreamina.capcut.com/ai-tool/home?need_login=true', { waitUntil: 'networkidle2', timeout: 60000 })
+    await sleep(3000)
 
-  await page.waitForSelector('input[name="username"]', { timeout: 30000 })
-  await page.type('input[name="username"]', DREAMINA_EMAIL, { delay: 50 })
-  await sleep(300)
-  await page.type('input[name="password"]', DREAMINA_PASSWORD, { delay: 50 })
-  await sleep(300)
-  await page.evaluate(() => {
-    document.querySelector('button.lv_new_sign_in_panel_wide-sign-in-button')
-      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-  })
-  console.log('Logged in. Waiting...')
-  await sleep(5000)
-
-  await page.evaluate(() => {
-    const btn = document.querySelector('button.close-icon-wrapper-TApiiy')
-    if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-  })
-  await sleep(1500)
-
-  // Check credit balance — abort early if too low to avoid a wasted run
-  let creditBalance = null
-  try {
-    creditBalance = await page.evaluate(() => {
-      const el = document.querySelector('div.credit-amount-text-kJNIlf')
-      return el ? parseInt(el.textContent.trim(), 10) : null
+    await page.evaluate(() => {
+      const span = Array.from(document.querySelectorAll('span.lv_new_third_part_sign_in_expand-label'))
+        .find(s => s.textContent.trim() === 'Continue with email')
+      if (span) span.parentElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     })
-  } catch (e) { /* selector not found, continue anyway */ }
-  console.log('Credit balance:', creditBalance)
-  if (creditBalance !== null && creditBalance < 119) {
-    console.error(`Insufficient credits (${creditBalance}) for account ${DREAMINA_EMAIL}. Marking used and exiting.`)
-    await markAccountUsed(DREAMINA_EMAIL, usage, today)
-    await browser.close()
+    await sleep(8000)
+
+    await page.waitForSelector('input[name="username"]', { timeout: 30000 })
+    await page.type('input[name="username"]', candidate, { delay: 50 })
+    await sleep(300)
+    await page.type('input[name="password"]', DREAMINA_PASSWORD, { delay: 50 })
+    await sleep(300)
+    await page.evaluate(() => {
+      document.querySelector('button.lv_new_sign_in_panel_wide-sign-in-button')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    console.log('Logged in. Waiting...')
+    await sleep(5000)
+
+    await page.evaluate(() => {
+      const btn = document.querySelector('button.close-icon-wrapper-TApiiy')
+      if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+    await sleep(1500)
+
+    // Check credit balance
+    let creditBalance = null
+    try {
+      creditBalance = await page.evaluate(() => {
+        const el = document.querySelector('div.credit-amount-text-kJNIlf')
+        return el ? parseInt(el.textContent.trim(), 10) : null
+      })
+    } catch (e) { /* selector not found, continue anyway */ }
+    console.log('Credit balance for', candidate, ':', creditBalance)
+
+    if (creditBalance !== null && creditBalance < 119) {
+      console.error(`Insufficient credits (${creditBalance}) for account ${candidate}. Marking used, trying next account.`)
+      await markAccountUsed(candidate, usage, today)
+      await browser.close()
+      continue
+    }
+
+    // This account works — use it
+    DREAMINA_EMAIL = candidate
+    break
+  }
+
+  if (!DREAMINA_EMAIL) {
+    console.error('All Dreamina accounts exhausted or out of credits for today.')
+    await patchSupabase({ status: 'failed', error: 'All Dreamina accounts have used up today\'s generation credits. Please try again tomorrow.' })
     process.exit(1)
   }
+
+  console.log('Using account:', DREAMINA_EMAIL)
 
   // Navigate directly to AI Avatar page
   await page.goto('https://dreamina.capcut.com/ai-tool/generate?type=digitalHuman&workspace=0', { waitUntil: 'networkidle2', timeout: 60000 })
@@ -207,6 +244,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
   await page.mouse.click(generateRect.x, generateRect.y)
   console.log('Generate clicked at', generateRect)
   await markAccountUsed(DREAMINA_EMAIL, usage, today)
+  await patchSupabase({ status: 'video_ready' })
 
   // Intercept network for video output URL
   const https = require('https')
@@ -247,6 +285,8 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
       ContentType: 'video/mp4'
     }))
     console.log('Uploaded to R2:', filename)
+    const finalUrl = `${process.env.R2_PUBLIC_URL}/${filename}`
+    await patchSupabase({ status: 'complete', final_url: finalUrl })
     await browser.close()
     process.exit(0)
   }
