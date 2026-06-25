@@ -51,16 +51,19 @@ export async function GET() {
   try {
     const client = getClient()
     const endpoint = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
-    const url = `${endpoint}/${R2_BUCKET}?list-type=2&prefix=generated-videos/`
+    const [res1, res2] = await Promise.all([
+      client.fetch(`${endpoint}/${R2_BUCKET}?list-type=2&prefix=generated-videos/`),
+      client.fetch(`${endpoint}/${R2_BUCKET}?list-type=2&prefix=generated-demos/`),
+    ])
+    if (!res1.ok) { const t = await res1.text(); throw new Error(`R2 list failed: ${res1.status} — ${t}`) }
+    if (!res2.ok) { const t = await res2.text(); throw new Error(`R2 list failed: ${res2.status} — ${t}`) }
+    const [xml1, xml2] = await Promise.all([res1.text(), res2.text()])
+    const objects1 = parseListObjectsXml(xml1)
+    const objects2 = parseListObjectsXml(xml2)
+    const objects = [...objects1, ...objects2]
+    const url = '' // unused
 
-    const res = await client.fetch(url)
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`R2 list request failed: ${res.status} — ${text}`)
-    }
 
-    const xml = await res.text()
-    const objects = parseListObjectsXml(xml)
 
     const videos = objects
       .filter(obj => /\.(mp4|mov|webm)$/i.test(obj.Key))
