@@ -58,9 +58,7 @@ async function injectCursor(page) {
       z-index: 999999;
       transition: left 0.25s cubic-bezier(0.25,0.1,0.25,1), top 0.25s cubic-bezier(0.25,0.1,0.25,1);
     `;
-    el.innerHTML = \`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
-      <path d="M5 2L23 13.5L14.5 15.5L10.5 24L5 2Z" fill="white" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>\`;
+    el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M5 2L23 13.5L14.5 15.5L10.5 24L5 2Z" fill="white" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="round"/></svg>';
     el.style.left = '-100px';
     el.style.top = '-100px';
     document.body.appendChild(el);
