@@ -1,0 +1,61 @@
+{
+  "id": "signup_login",
+  "title": "Signup + Login",
+  "description": "Walkthrough of the LaunchSteady signup flow — package selection, billing, and login.",
+  "fields": [
+    {
+      "id": "demo_full_name",
+      "label": "Demo full name",
+      "type": "text",
+      "placeholder": "Sarah Tan",
+      "required": true,
+      "hint": "Name that will be typed into the signup form"
+    },
+    {
+      "id": "demo_email",
+      "label": "Demo email",
+      "type": "email",
+      "placeholder": "sarah@example.com",
+      "required": true,
+      "hint": "Used on both the signup and login screens"
+    },
+    {
+      "id": "demo_phone",
+      "label": "Demo phone number",
+      "type": "text",
+      "placeholder": "91234567",
+      "required": true,
+      "hint": "Local number without country code — Singapore (+65) is pre-selected"
+    },
+    {
+      "id": "demo_address",
+      "label": "Demo address",
+      "type": "text",
+      "placeholder": "123 Orchard Road",
+      "required": true
+    },
+    {
+      "id": "demo_postal_code",
+      "label": "Demo postal code",
+      "type": "text",
+      "placeholder": "238858",
+      "required": true
+    },
+    {
+      "id": "demo_password",
+      "label": "Demo password",
+      "type": "text",
+      "placeholder": "Demo@12345",
+      "required": true,
+      "hint": "Shown as dots on screen — used on both signup and login"
+    },
+    {
+      "id": "watermark_logo",
+      "label": "Watermark logo",
+      "type": "file",
+      "accept": "image/png,image/svg+xml",
+      "required": true,
+      "hint": "PNG or SVG — composited into the final video via ffmpeg overlay"
+    }
+  ]
+}

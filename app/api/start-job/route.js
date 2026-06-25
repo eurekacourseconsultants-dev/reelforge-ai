@@ -104,6 +104,57 @@ export async function POST(request) {
       return Response.json({ job_id: jobId, pipeline_mode: "avatar_lipsync", backend: "dreamina" });
     }
 
+    // --- Video Type 4: Demo Generator ---
+    if (video_type === 4) {
+      const { demo_type, variables } = body;
+      if (!demo_type) {
+        return Response.json({ error: 'demo_type is required' }, { status: 400 });
+      }
+
+      const { data: job, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          prompt: `Demo: ${demo_type}`,
+          pipeline_mode: `demo_${demo_type}`,
+          backend: 'github',
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (jobError) throw new Error(jobError.message);
+      const jobId = job.id;
+
+      const ghResponse = await fetch(
+        `https://api.github.com/repos/${repoOwner}/${repoName}/actions/workflows/demo_generator.yml/dispatches`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${pat}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/vnd.github.v3+json',
+            'User-Agent': 'reelforge-ai',
+          },
+          body: JSON.stringify({
+            ref: 'main',
+            inputs: {
+              demo_type,
+              variables: JSON.stringify(variables || {}),
+              job_id: String(jobId),
+            },
+          }),
+        }
+      );
+
+      if (!ghResponse.ok) {
+        const ghError = await ghResponse.text();
+        throw new Error(`GitHub dispatch failed: ${ghResponse.status} — ${ghError}`);
+      }
+
+      await supabase.from('jobs').update({ status: 'queued' }).eq('id', jobId);
+      return Response.json({ job_id: jobId, pipeline_mode: `demo_${demo_type}`, backend: 'github' });
+    }
+
     // --- Existing Kaggle/Modal pipelines (video_type 2/3 or legacy) ---
     if (!prompt?.trim()) {
       return Response.json({ error: "Prompt is required" }, { status: 400 });

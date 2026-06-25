@@ -1,0 +1,64 @@
+name: Demo Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      demo_type:
+        description: 'Demo type id (e.g. signup_login)'
+        required: true
+        type: string
+      variables:
+        description: 'JSON string of form variables'
+        required: true
+        type: string
+      job_id:
+        description: 'Supabase job id'
+        required: true
+        type: string
+
+jobs:
+  generate-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Puppeteer browser
+        run: npx puppeteer browsers install chrome
+
+      - name: Install ffmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Run demo flow (capture raw video + actions log)
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}'
+
+      - name: Run zoompan pass (produce final 9:16 portrait video)
+        run: |
+          node scripts/build_demo_zoompan.js '${{ inputs.demo_type }}'
+
+      - name: Upload to R2
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          DEMO_TYPE: ${{ inputs.demo_type }}
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/upload_demo.js

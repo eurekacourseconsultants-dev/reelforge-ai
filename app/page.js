@@ -98,7 +98,38 @@ const VIDEO_TYPES = [
   { id: 1, mode: 'avatar_lipsync', title: 'Talking Actor', desc: 'Pick an actor, paste a script', needsActor: true },
   { id: 2, mode: 'avatar_scene',   title: 'Scene + Actor', desc: 'Pick an actor, describe a scene', needsActor: true },
   { id: 3, mode: 'scene',          title: 'Fresh Scene',   desc: 'Describe everything, actor generated for you', needsActor: false },
+  { id: 4, mode: 'demo',           title: 'Demo Builder',  desc: 'Auto-generate a product demo video', needsActor: false },
 ]
+
+const DEMO_TYPES = [
+  { id: 'signup_login',             label: '1. Signup + Login' },
+  { id: 'wizard_website_templates', label: '2. Setup Wizard + Website + Templates' },
+  { id: 'products',                 label: '3. Products & Services' },
+  { id: 'orders',                   label: '4. Orders' },
+  { id: 'promotions',               label: '5. Promotions' },
+  { id: 'customers',                label: '6. Customers' },
+  { id: 'announcements',            label: '7. Announcements' },
+  { id: 'payments_stripe_connect',  label: '8. Payment Setup (Stripe Connect)' },
+  { id: 'store_agreement',          label: '9. Store Agreement' },
+  { id: 'ai_mentor_action_plans',   label: '10. AI Mentor + Action Plans' },
+  { id: 'referrals_referrer_dashboard', label: '11. Referrals + Referrer Dashboard' },
+  { id: 'staff',                    label: '12. Staff' },
+  { id: 'billing_upgrade',          label: '13. Billing + Upgrade' },
+  { id: 'account',                  label: '14. Account' },
+  { id: 'main_dashboard',           label: '15. Main Dashboard' },
+]
+
+// Form schemas per demo type — variables the user fills in
+const DEMO_FORM_SCHEMAS = {
+  signup_login: [
+    { id: 'demo_full_name',   label: 'Demo full name',    placeholder: 'Sarah Tan',           required: true },
+    { id: 'demo_email',       label: 'Demo email',         placeholder: 'sarah@example.com',   required: true },
+    { id: 'demo_phone',       label: 'Demo phone',         placeholder: '91234567',            required: true },
+    { id: 'demo_address',     label: 'Demo address',       placeholder: '123 Orchard Road',    required: true },
+    { id: 'demo_postal_code', label: 'Demo postal code',   placeholder: '238858',              required: true },
+    { id: 'demo_password',    label: 'Demo password',      placeholder: 'Demo@12345',          required: true },
+  ],
+}
 
 const VOICES_BY_GENDER = {
   female: ['Matilda', 'Chill Girl', 'Sarah', 'Valley Girl', 'Lily'],
@@ -128,6 +159,8 @@ export default function Home() {
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
 
+  const [demoType, setDemoType]         = useState(null)
+  const [demoVariables, setDemoVars]   = useState({})
   const [showGenModal, setShowGenModal] = useState(false)
   const [genPrefs, setGenPrefs]         = useState({ gender: '', age: '', environment: '', clothing: '', ethnicity: '' })
   const [generating, setGenerating]     = useState(false)
@@ -207,6 +240,12 @@ export default function Home() {
             voice_name: voiceName,
             action_text: actionText,
           }
+        : videoType === 4
+        ? {
+            video_type: 4,
+            demo_type: demoType,
+            variables: demoVariables,
+          }
         : {
             prompt,
             avatar_id: selectedType?.needsActor ? selectedId : null,
@@ -277,7 +316,62 @@ export default function Home() {
             </div>
           </div>
 
-          {videoType && currentType?.needsActor && (
+          {videoType === 4 && (
+        <>
+          <div style={S.section}>
+            <div style={S.label}>2. Choose a demo</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+              {DEMO_TYPES.map(d => (
+                <div
+                  key={d.id}
+                  onClick={() => { setDemoType(d.id); setDemoVars({}) }}
+                  style={{
+                    padding: '12px 16px',
+                    border: `2px solid ${demoType === d.id ? C.accent : C.border}`,
+                    borderRadius: '8px',
+                    background: demoType === d.id ? C.accentDim : C.surface,
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: demoType === d.id ? '700' : '400',
+                    color: demoType === d.id ? C.accent : C.text,
+                  }}
+                >
+                  {d.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {demoType && DEMO_FORM_SCHEMAS[demoType] && (
+            <div style={S.section}>
+              <div style={S.label}>3. Fill in demo details</div>
+              {DEMO_FORM_SCHEMAS[demoType].map(field => (
+                <div key={field.id} style={{ marginBottom: '16px' }}>
+                  <div style={S.fieldLabel}>{field.label}{field.required && <span style={{ color: C.error }}> *</span>}</div>
+                  <input
+                    style={S.input}
+                    placeholder={field.placeholder}
+                    value={demoVariables[field.id] || ''}
+                    onChange={e => setDemoVars(v => ({ ...v, [field.id]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              <button
+                style={{
+                  ...S.button,
+                  opacity: DEMO_FORM_SCHEMAS[demoType].every(f => !f.required || demoVariables[f.id]) ? 1 : 0.5
+                }}
+                onClick={handleForge}
+                disabled={loading || !DEMO_FORM_SCHEMAS[demoType].every(f => !f.required || demoVariables[f.id])}
+              >
+                {loading ? 'Generating Demo...' : 'Generate Demo'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {videoType && videoType !== 4 && currentType?.needsActor && (
             <div style={S.section}>
               <div style={S.label}>2. Choose an actor</div>
               <div style={S.avatarGrid}>
@@ -302,7 +396,7 @@ export default function Home() {
             </div>
           )}
 
-          {videoType && (
+          {videoType && videoType !== 4 && (
             <>
               <hr style={S.divider} />
 
