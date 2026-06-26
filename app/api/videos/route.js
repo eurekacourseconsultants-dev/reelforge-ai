@@ -91,7 +91,7 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url)
     const key = searchParams.get('key')
-    if (!key || !key.startsWith('generated-videos/')) {
+    if (!key || (!key.startsWith('generated-videos/') && !key.startsWith('generated-demos/'))) {
       return NextResponse.json({ error: 'Invalid key' }, { status: 400 })
     }
 
