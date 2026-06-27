@@ -2,8 +2,9 @@
 /**
  * run_demo_flow.js — LaunchSteady Demo Generator
  * Drives Puppeteer through a flow config, records raw video.
- * Output: /tmp/demo_raw_{demo_type}.mp4
+ * Output: /tmp/demo_raw_{demo_type}_desktop.mp4 or _mobile.mp4
  * Actions log: /tmp/demo_actions_{demo_type}.json
+ * Flags: --mobile (390x844 viewport, isMobile+hasTouch)
  */
 
 const puppeteer = require('puppeteer');
@@ -12,8 +13,12 @@ const fs = require('fs');
 const path = require('path');
 
 // ─── CLI args ────────────────────────────────────────────────────────────────
-const [,, demoType, variablesJson] = process.argv;
-if (!demoType) { console.error('Usage: node run_demo_flow.js <demo_type> <variables_json>'); process.exit(1); }
+const args = process.argv.slice(2);
+const isMobile = args.includes('--mobile');
+const positional = args.filter(a => !a.startsWith('--'));
+const [demoType, variablesJson] = positional;
+if (!demoType) { console.error('Usage: node run_demo_flow.js <demo_type> <variables_json> [--mobile]'); process.exit(1); }
+const mode = isMobile ? 'mobile' : 'desktop';
 
 const variables = variablesJson ? JSON.parse(variablesJson) : {};
 const flowPath = path.join(__dirname, 'demo_flows', `${demoType}.json`);
@@ -34,30 +39,44 @@ function interpolate(str) {
 function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
 // ─── Cursor injection ─────────────────────────────────────────────────────────
-async function injectCursor(page) {
-  await page.evaluate(() => {
+async function injectCursor(page, mobile = false) {
+  await page.evaluate((mobile) => {
     if (document.getElementById('__demo_cursor')) return;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.id = '__demo_cursor';
-    svg.setAttribute('width', '24');
-    svg.setAttribute('height', '24');
-    svg.setAttribute('viewBox', '0 0 24 24');
+    const size = mobile ? 36 : 24;
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.setAttribute('viewBox', '0 0 36 36');
     svg.style.cssText = `
       position: fixed;
       top: -100px;
       left: -100px;
       z-index: 999999;
       pointer-events: none;
-      transform: translate(0, 0);
+      transform: translate(-50%, -50%);
       transition: top 0ms linear, left 0ms linear;
-      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
     `;
-    svg.innerHTML = `
-      <polygon points="2,2 2,20 7,15 11,22 13,21 9,14 16,14" 
-               fill="white" stroke="#222" stroke-width="1.5" stroke-linejoin="round"/>
-    `;
+    if (mobile) {
+      // Tap circle for mobile
+      svg.innerHTML = `
+        
+        <circle cx="18" cy="18" r="8" fill="orange"/>
+      `;
+    } else {
+      // Arrow cursor for desktop — offset so tip is at top-left
+      svg.style.transform = 'translate(0, 0)';
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('width', '24');
+      svg.setAttribute('height', '24');
+      svg.innerHTML = `
+        <polygon points="2,2 2,20 7,15 11,22 13,21 9,14 16,14" 
+                 fill="white" stroke="#222" stroke-width="1.5" stroke-linejoin="round"/>
+      `;
+    }
     document.body.appendChild(svg);
-  });
+  }, mobile);
 }
 
 async function moveCursor(page, x, y) {
@@ -116,7 +135,7 @@ async function getElementByText(page, text) {
 }
 
 // ─── Scroll to element ────────────────────────────────────────────────────────
-async function scrollToTarget(page, target) {
+async function scrollToTarget(page, target, offset = 0) {
   // Multi-flick scroll: fast flick, then precise snap
   const targetY = await page.evaluate((sel) => {
     const el = document.querySelector(sel);
@@ -145,6 +164,10 @@ async function scrollToTarget(page, target) {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, target);
   await sleep(300); // settle: scroll
+  if (offset !== 0) {
+    await page.evaluate((y) => window.scrollBy(0, y), offset);
+    await sleep(300);
+  }
 }
 
 // ─── Human typing ─────────────────────────────────────────────────────────────
@@ -162,7 +185,7 @@ async function humanType(page, selector, text) {
 async function handleNavigate(page, step, cursorPos) {
   const url = interpolate(step.url);
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-  await injectCursor(page);
+  await injectCursor(page, isMobile);
   await moveCursor(page, cursorPos.x, cursorPos.y);
   await sleep(200); // settle: fresh page navigation
 }
@@ -171,8 +194,9 @@ async function handleWait(page, step) {
   await sleep(step.duration ?? 1000);
 }
 
-async function handleScroll(page, step, cursorPos) {
-  await scrollToTarget(page, step.target);
+async function handleScroll(page, step, cursorPos, isMobile) {
+  const target = (isMobile && step.mobile_target) ? step.mobile_target : step.target;
+  await scrollToTarget(page, target, step.offset || 0);
   // After scroll, reset cursor to centre of current viewport
   // so next glide always starts from a visible position
   const viewportCentre = await page.evaluate(() => ({
@@ -268,7 +292,7 @@ async function handleClickNavigate(page, step, cursorPos) {
     );
   }
 
-  await injectCursor(page);
+  await injectCursor(page, isMobile);
   await moveCursor(page, cursorPos.x, cursorPos.y);
   await sleep(200); // settle: fresh page navigation
 
@@ -391,7 +415,7 @@ async function handleClickByText(page, step, cursorPos) {
 
 // ─── Main runner ──────────────────────────────────────────────────────────────
 (async () => {
-  console.log(`Running demo flow: ${demoType}`);
+  console.log(`Running demo flow: ${demoType} [${mode}]`);
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -401,7 +425,9 @@ async function handleClickByText(page, step, cursorPos) {
       '--disable-dev-shm-usage',
       '--run-all-compositor-stages-before-draw',
     ],
-    defaultViewport: { width: 1280, height: 800 },
+    defaultViewport: isMobile
+      ? { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+      : { width: 1280, height: 800 },
   });
 
   const page = await browser.newPage();
@@ -413,14 +439,14 @@ async function handleClickByText(page, step, cursorPos) {
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
     fps: 30,
-    videoFrame: { width: 1280, height: 800 },
+
     videoCrf: 18,
     videoCodec: 'libx264',
     videoPreset: 'ultrafast',
     aspectRatio: '16:9',
   });
 
-  const outputVideo = `/tmp/demo_raw_${demoType}.mp4`;
+  const outputVideo = `/tmp/demo_raw_${demoType}_${mode}.mp4`;
   console.log('Starting recording...');
   await recorder.start(outputVideo);
 
@@ -440,7 +466,11 @@ async function handleClickByText(page, step, cursorPos) {
           await handleWait(page, step);
           break;
         case 'scroll':
-          await handleScroll(page, step, cursorPos);
+          await handleScroll(page, step, cursorPos, isMobile);
+          break;
+        case 'scroll_by':
+          await page.evaluate((y) => window.scrollBy(0, y), step.y);
+          await sleep(500);
           break;
         case 'click':
           await handleClick(page, step, cursorPos);
@@ -479,10 +509,10 @@ async function handleClickByText(page, step, cursorPos) {
   console.log('Recording stopped.');
 
   fs.writeFileSync(
-    `/tmp/demo_actions_${demoType}.json`,
+    `/tmp/demo_actions_${demoType}_${mode}.json`,
     JSON.stringify(actionsLog, null, 2)
   );
 
   console.log(`Video saved: ${outputVideo}`);
-  console.log(`Actions log: /tmp/demo_actions_${demoType}.json`);
+  console.log(`Actions log: /tmp/demo_actions_${demoType}_${mode}.json`);
 })();

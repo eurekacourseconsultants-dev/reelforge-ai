@@ -10,9 +10,10 @@
     },
     {
       "id": "landing_scroll_pricing",
-      "desc": "Scroll down to the pricing section",
+      "desc": "Scroll to CTA on desktop, pricing section on mobile",
       "action": "scroll",
-      "target": "#pricing"
+      "target": ".pricing-grid > div:nth-child(1) a.btn",
+      "mobile_target": "#pricing"
     },
     {
       "id": "landing_hold",
@@ -109,6 +110,12 @@
       "desc": "Hold on package selection page",
       "action": "wait",
       "duration": 400
+    },
+    {
+      "id": "package_scroll",
+      "desc": "Scroll to Professional package card",
+      "action": "scroll",
+      "target": ".package-grid > div:nth-child(3)"
     },
     {
       "id": "package_select",
