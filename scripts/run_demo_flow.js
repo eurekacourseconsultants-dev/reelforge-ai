@@ -1,260 +1,488 @@
+#!/usr/bin/env node
+/**
+ * run_demo_flow.js — LaunchSteady Demo Generator
+ * Drives Puppeteer through a flow config, records raw video.
+ * Output: /tmp/demo_raw_{demo_type}.mp4
+ * Actions log: /tmp/demo_actions_{demo_type}.json
+ */
+
 const puppeteer = require('puppeteer');
 const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
-// ---------------------------------------------------------------------------
-// Usage: node scripts/run_demo_flow.js <demo_type> <variables_json>
-// Example:
-//   node scripts/run_demo_flow.js signup_login '{"demo_full_name":"Sarah Tan","demo_email":"sarah@example.com","demo_phone":"91234567","demo_address":"123 Orchard Road","demo_postal_code":"238858","demo_password":"Demo@12345"}'
-// ---------------------------------------------------------------------------
+// ─── CLI args ────────────────────────────────────────────────────────────────
+const [,, demoType, variablesJson] = process.argv;
+if (!demoType) { console.error('Usage: node run_demo_flow.js <demo_type> <variables_json>'); process.exit(1); }
 
-const DEMO_TYPE = process.argv[2];
-const VARIABLES = JSON.parse(process.argv[3] || '{}');
+const variables = variablesJson ? JSON.parse(variablesJson) : {};
+const flowPath = path.join(__dirname, 'demo_flows', `${demoType}.json`);
+if (!fs.existsSync(flowPath)) { console.error(`Flow config not found: ${flowPath}`); process.exit(1); }
 
-if (!DEMO_TYPE) {
-  console.error('Usage: node scripts/run_demo_flow.js <demo_type> <variables_json>');
-  process.exit(1);
+const flow = JSON.parse(fs.readFileSync(flowPath, 'utf8'));
+const actionsLog = [];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function interpolate(str) {
+  if (!str) return str;
+  return str.replace(/\{\{(\w+)\}\}/g, (_, k) => variables[k] ?? `{{${k}}}`);
 }
 
-const FLOW_PATH = path.join(__dirname, 'demo_flows', `${DEMO_TYPE}.json`);
-if (!fs.existsSync(FLOW_PATH)) {
-  console.error(`Flow config not found: ${FLOW_PATH}`);
-  process.exit(1);
-}
+// Ease-out cubic: t in [0,1] → value in [0,1]
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
-const flow = JSON.parse(fs.readFileSync(FLOW_PATH, 'utf8'));
-
-const OUTPUT_DIR = '/tmp/demo_segments';
-const ACTIONS_LOG = `/tmp/demo_actions_${DEMO_TYPE}.json`;
-const VIDEO_OUT = `/tmp/demo_raw_${DEMO_TYPE}.mp4`;
-
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function resolveValue(val) {
-  if (!val) return val;
-  return val.replace(/\{\{(\w+)\}\}/g, (_, key) => VARIABLES[key] || '');
-}
-
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-// Inject fake cursor overlay into the page
+// ─── Cursor injection ─────────────────────────────────────────────────────────
 async function injectCursor(page) {
   await page.evaluate(() => {
     if (document.getElementById('__demo_cursor')) return;
-    const el = document.createElement('div');
-    el.id = '__demo_cursor';
-    el.style.cssText = `
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = '__demo_cursor';
+    svg.setAttribute('width', '24');
+    svg.setAttribute('height', '24');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.style.cssText = `
       position: fixed;
-      width: 28px;
-      height: 28px;
-      pointer-events: none;
+      top: -100px;
+      left: -100px;
       z-index: 999999;
-      transition: left 0.25s cubic-bezier(0.25,0.1,0.25,1), top 0.25s cubic-bezier(0.25,0.1,0.25,1);
+      pointer-events: none;
+      transform: translate(0, 0);
+      transition: top 0ms linear, left 0ms linear;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
     `;
-    el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M5 2L23 13.5L14.5 15.5L10.5 24L5 2Z" fill="white" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-    el.style.left = '-100px';
-    el.style.top = '-100px';
-    document.body.appendChild(el);
+    svg.innerHTML = `
+      <polygon points="2,2 2,20 7,15 11,22 13,21 9,14 16,14" 
+               fill="white" stroke="#222" stroke-width="1.5" stroke-linejoin="round"/>
+    `;
+    document.body.appendChild(svg);
   });
 }
 
-// Move fake cursor to (x, y) with eased steps
 async function moveCursor(page, x, y) {
-  await page.evaluate(({ x, y }) => {
+  await page.evaluate((x, y) => {
     const el = document.getElementById('__demo_cursor');
-    if (el) { el.style.left = (x - 4) + 'px'; el.style.top = (y - 3) + 'px'; }
-  }, { x, y });
-  // Also move Puppeteer's real mouse (needed for hover/click detection)
-  await page.mouse.move(x, y, { steps: 20 });
-  await sleep(350); // allow CSS transition to complete
+    if (el) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+  }, x, y);
 }
 
-// Get bounding box of a selector, returns { x, y, width, height, centerX, centerY }
-async function getBBox(page, selector) {
-  const box = await page.$eval(selector, el => {
-    const r = el.getBoundingClientRect();
-    return { x: r.left, y: r.top, width: r.width, height: r.height };
-  });
-  box.centerX = Math.round(box.x + box.width / 2);
-  box.centerY = Math.round(box.y + box.height / 2);
-  return box;
+// Smooth glide — step-based with per-step screen updates (works correctly with recorder)
+async function glideCursor(page, fromX, fromY, toX, toY) {
+  const STEPS = 40;
+  const STEP_MS = 16; // 16ms per step = ~60fps, forces a repaint each step
+  for (let i = 1; i <= STEPS; i++) {
+    const progress = i / STEPS;
+    const t = easeOut(progress);
+    const jitter = (1 - progress) * 2.5;
+    const jx = (Math.random() - 0.5) * jitter;
+    const jy = (Math.random() - 0.5) * jitter;
+    const x = fromX + (toX - fromX) * t + jx;
+    const y = fromY + (toY - fromY) * t + jy;
+    await moveCursor(page, x, y);
+    await sleep(STEP_MS);
+  }
+  await moveCursor(page, toX, toY);
 }
 
-// Type text character by character with realistic delay
-async function typeSlowly(page, selector, text) {
+// ─── Get element center ───────────────────────────────────────────────────────
+async function getElementCenter(page, selector) {
+  const el = await page.$(selector);
+  if (!el) return null;
+  const box = await el.boundingBox();
+  if (!box) return null;
+  // Slightly off-center — looks more human
+  return {
+    x: box.x + box.width * 0.42 + (Math.random() - 0.5) * 4,
+    y: box.y + box.height * 0.45 + (Math.random() - 0.5) * 3,
+  };
+}
+
+// Find element by visible text content
+async function getElementByText(page, text) {
+  return page.evaluateHandle((text) => {
+    const all = document.querySelectorAll('*');
+    for (const el of all) {
+      if (el.children.length === 0 && el.textContent && el.textContent.includes(text)) {
+        return el;
+      }
+    }
+    // Fallback: any element containing the text
+    for (const el of all) {
+      if (el.textContent && el.textContent.includes(text)) return el;
+    }
+    return null;
+  }, text);
+}
+
+// ─── Scroll to element ────────────────────────────────────────────────────────
+async function scrollToTarget(page, target) {
+  // Multi-flick scroll: fast flick, then precise snap
+  const targetY = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    return el.getBoundingClientRect().top + window.scrollY;
+  }, target);
+
+  if (targetY === null) throw new Error(`Scroll target not found: ${target}`);
+
+  const currentY = await page.evaluate(() => window.scrollY);
+  const distance = targetY - currentY;
+
+  // Flick: scroll 85% of the way fast
+  const flickTarget = currentY + distance * 0.85;
+  const FLICK_STEPS = 25;
+  for (let i = 1; i <= FLICK_STEPS; i++) {
+    const t = easeOut(i / FLICK_STEPS);
+    await page.evaluate((y) => window.scrollTo(0, y), currentY + (flickTarget - currentY) * t);
+    await sleep(18);
+  }
+  await sleep(80);
+
+  // Precise snap: re-measure (accounts for any layout shift during scroll)
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, target);
+  await sleep(300); // settle: scroll
+}
+
+// ─── Human typing ─────────────────────────────────────────────────────────────
+async function humanType(page, selector, text) {
   await page.focus(selector);
+  await sleep(80 + Math.random() * 60);
   for (const char of text) {
     await page.keyboard.type(char);
-    await sleep(60 + Math.random() * 60);
+    // Tight but varied: 35–75ms between keystrokes
+    await sleep(35 + Math.random() * 40);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main runner
-// ---------------------------------------------------------------------------
+// ─── Action handlers ──────────────────────────────────────────────────────────
+async function handleNavigate(page, step, cursorPos) {
+  const url = interpolate(step.url);
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+  await injectCursor(page);
+  await moveCursor(page, cursorPos.x, cursorPos.y);
+  await sleep(200); // settle: fresh page navigation
+}
 
+async function handleWait(page, step) {
+  await sleep(step.duration ?? 1000);
+}
+
+async function handleScroll(page, step, cursorPos) {
+  await scrollToTarget(page, step.target);
+  // After scroll, reset cursor to centre of current viewport
+  // so next glide always starts from a visible position
+  const viewportCentre = await page.evaluate(() => ({
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2,
+  }));
+  await moveCursor(page, viewportCentre.x, viewportCentre.y);
+  cursorPos.x = viewportCentre.x;
+  cursorPos.y = viewportCentre.y;
+  await sleep(500); // recorder needs 2-3 frames to capture cursor at new position before glide
+}
+
+async function handleClick(page, step, cursorPos) {
+  let center;
+
+  if (step.textContains) {
+    // Find by visible text
+    const el = await getElementByText(page, step.textContains);
+    const box = await el.asElement()?.boundingBox();
+    if (!box) throw new Error(`textContains element not found: "${step.textContains}"`);
+    center = {
+      x: box.x + box.width * 0.42,
+      y: box.y + box.height * 0.45,
+    };
+  } else {
+    center = await getElementCenter(page, step.selector);
+    if (!center) throw new Error(`Selector not found: ${step.selector}`);
+  }
+
+  // Glide cursor to element
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(120);
+
+  // DOM click (bypasses opacity/pointer-events issues from .animate transitions)
+  if (step.textContains) {
+    await page.evaluate((text) => {
+      const all = document.querySelectorAll('*');
+      for (const el of all) {
+        if (el.textContent && el.textContent.includes(text)) { el.click(); return; }
+      }
+    }, step.textContains);
+  } else {
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.click();
+    }, step.selector);
+  }
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+async function handleClickNavigate(page, step, cursorPos) {
+  let center;
+
+  if (step.textContains) {
+    const el = await getElementByText(page, step.textContains);
+    const box = await el.asElement()?.boundingBox();
+    if (!box) throw new Error(`textContains element not found: "${step.textContains}"`);
+    center = { x: box.x + box.width * 0.42, y: box.y + box.height * 0.45 };
+  } else {
+    center = await getElementCenter(page, step.selector);
+    if (!center) throw new Error(`Selector not found for click_navigate: ${step.selector}`);
+  }
+
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(120); // post-click pause
+
+  // Fire DOM click + wait for navigation
+  const navPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null);
+
+  if (step.textContains) {
+    await page.evaluate((text) => {
+      const all = document.querySelectorAll('*');
+      for (const el of all) {
+        if (el.textContent && el.textContent.includes(text)) { el.click(); return; }
+      }
+    }, step.textContains);
+  } else {
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.click();
+    }, step.selector);
+  }
+
+  await navPromise;
+
+  // Verify we actually navigated somewhere expected
+  const currentUrl = page.url();
+  if (step.expected_url_contains && !currentUrl.includes(step.expected_url_contains)) {
+    throw new Error(
+      `click_navigate on step "${step.id}": expected URL to contain "${step.expected_url_contains}" but got "${currentUrl}"`
+    );
+  }
+
+  await injectCursor(page);
+  await moveCursor(page, cursorPos.x, cursorPos.y);
+  await sleep(200); // settle: fresh page navigation
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+async function handleType(page, step, cursorPos) {
+  const value = interpolate(step.value);
+  const center = await getElementCenter(page, step.selector);
+  if (!center) throw new Error(`Type target not found: ${step.selector}`);
+
+  // Glide to field, click it, then type
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(80);
+  await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, step.selector);
+  await sleep(60);
+  await humanType(page, step.selector, value);
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+async function handleSelect(page, step, cursorPos) {
+  const center = await getElementCenter(page, step.selector);
+  if (!center) throw new Error(`Select target not found: ${step.selector}`);
+
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(80);
+  await page.select(step.selector, step.value);
+  await sleep(100);
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+async function handleHover(page, step, cursorPos) {
+  const center = await getElementCenter(page, step.selector);
+  if (!center) { console.warn(`  Hover target not found (skipping): ${step.selector}`); return; }
+
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(150 + Math.random() * 200); // hover dwell: 150–350ms
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+async function handleVisualClick(page, step, cursorPos) {
+  // Move cursor and do mouse down/up — does NOT trigger navigation
+  const center = await getElementCenter(page, step.selector);
+  if (!center) throw new Error(`visual_click target not found: ${step.selector}`);
+
+  await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
+  await sleep(80);
+  await page.mouse.down();
+  await sleep(80);
+  await page.mouse.up();
+
+  cursorPos.x = center.x;
+  cursorPos.y = center.y;
+}
+
+// Click the nearest ancestor div of a text node — used for custom checkboxes
+async function handleClickByText(page, step, cursorPos) {
+  const text = step.containsText;
+  // Find the outer container, then click its FIRST CHILD div (the 18x18 checkbox box)
+  const box = await page.evaluate((text) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.textContent.includes(text)) {
+        let el = node.parentElement;
+        for (let i = 0; i < 6; i++) {
+          if (!el) break;
+          const style = window.getComputedStyle(el);
+          if (style.cursor === 'pointer') {
+            // Found the outer clickable container — get its first child div (the checkbox box)
+            const checkboxBox = el.querySelector('div');
+            if (checkboxBox) {
+              const r = checkboxBox.getBoundingClientRect();
+              if (r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2, found: true };
+            }
+          }
+          el = el.parentElement;
+        }
+      }
+    }
+    return { found: false };
+  }, text);
+
+  if (!box || !box.found) throw new Error(`click_by_text: could not find checkbox for "${text}"`);
+
+  await glideCursor(page, cursorPos.x, cursorPos.y, box.x, box.y);
+  await sleep(80);
+
+  // Click the inner checkbox div directly
+  await page.evaluate((text) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.textContent.includes(text)) {
+        let el = node.parentElement;
+        for (let i = 0; i < 6; i++) {
+          if (!el) break;
+          const style = window.getComputedStyle(el);
+          if (style.cursor === 'pointer') {
+            el.click(); // click the outer div which has the onClick handler
+            return;
+          }
+          el = el.parentElement;
+        }
+      }
+    }
+  }, text);
+
+  await sleep(150);
+  cursorPos.x = box.x;
+  cursorPos.y = box.y;
+}
+
+// ─── Main runner ──────────────────────────────────────────────────────────────
 (async () => {
-  console.log(`Running demo flow: ${DEMO_TYPE}`);
-  console.log(`Variables: ${JSON.stringify(VARIABLES)}`);
+  console.log(`Running demo flow: ${demoType}`);
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--run-all-compositor-stages-before-draw',
+    ],
+    defaultViewport: { width: 1280, height: 800 },
   });
 
   const page = await browser.newPage();
-  await page.setViewport({
-    width: flow.viewport.width,
-    height: flow.viewport.height,
-  });
+
+  // Force 60fps tick rate in headless
+  const client = await page.createCDPSession();
+  await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
 
   const recorder = new PuppeteerScreenRecorder(page, {
-    fps: 25,
-    videoFrame: { width: flow.viewport.width, height: flow.viewport.height },
+    followNewTab: false,
+    fps: 30,
+    videoFrame: { width: 1280, height: 800 },
     videoCrf: 18,
     videoCodec: 'libx264',
     videoPreset: 'ultrafast',
-    autopad: { color: 'black' },
+    aspectRatio: '16:9',
   });
 
+  const outputVideo = `/tmp/demo_raw_${demoType}.mp4`;
   console.log('Starting recording...');
-  await recorder.start(VIDEO_OUT);
+  await recorder.start(outputVideo);
 
-  const actionsLog = [];
-  let currentScreen = null;
+  // Cursor position state (shared across steps)
+  const cursorPos = { x: 640, y: 400 };
 
-  for (const step of flow.steps) {
-    console.log(`Step: ${step.id} — ${step.description}`);
-    const stepStart = Date.now();
+  try {
+    for (const step of flow.steps) {
+      console.log(`Step: ${step.id} — ${step.desc}`);
+      actionsLog.push({ step: step.id, ts: Date.now() });
 
-    // Seed sessionStorage before navigation if required
-    if (step.seedSessionStorage) {
-      const seed = step.seedSessionStorage;
-      await page.goto(`${flow.baseUrl}/onboarding/package`, { waitUntil: 'networkidle2', timeout: 30000 });
-      await page.evaluate((vars, pkg) => {
-        sessionStorage.setItem('ls_package', pkg);
-        sessionStorage.setItem('ls_signup', JSON.stringify({
-          fullName: vars.demo_full_name,
-          email: vars.demo_email,
-          phone: vars.demo_phone,
-          password: vars.demo_password,
-        }));
-      }, VARIABLES, seed.ls_package);
-    }
-
-    // Navigate to new screen if needed
-    if (step.action === 'navigate' || step.screen !== currentScreen) {
-      const url = `${flow.baseUrl}${step.screen}`;
-      console.log(`  Navigating to ${url}`);
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-      await injectCursor(page);
-      currentScreen = step.screen;
-      // Hold for camera pan if specified
-      if (step.camera?.duration) {
-        await sleep(step.camera.duration * 1000);
+      switch (step.action) {
+        case 'navigate':
+          await handleNavigate(page, step, cursorPos);
+          break;
+        case 'wait':
+          await handleWait(page, step);
+          break;
+        case 'scroll':
+          await handleScroll(page, step, cursorPos);
+          break;
+        case 'click':
+          await handleClick(page, step, cursorPos);
+          break;
+        case 'click_navigate':
+          await handleClickNavigate(page, step, cursorPos);
+          break;
+        case 'type':
+          await handleType(page, step, cursorPos);
+          break;
+        case 'select':
+          await handleSelect(page, step, cursorPos);
+          break;
+        case 'hover':
+          await handleHover(page, step, cursorPos);
+          break;
+        case 'visual_click':
+          await handleVisualClick(page, step, cursorPos);
+          break;
+        case 'click_by_text':
+          await handleClickByText(page, step, cursorPos);
+          break;
+        default:
+          console.warn(`  Unknown action "${step.action}" — skipping`);
       }
     }
-
-    if (step.action === 'navigate') {
-      // Log the navigate action for zoompan
-      actionsLog.push({
-        stepId: step.id,
-        t: (Date.now() - actionsLog[0]?.tAbs || 0) / 1000,
-        tAbs: Date.now(),
-        type: 'navigate',
-        screen: step.screen,
-        camera: step.camera,
-      });
-      continue;
-    }
-
-    // Get bounding box of target element
-    let bbox = null;
-    if (step.selector) {
-      try {
-        await page.waitForSelector(step.selector, { timeout: 5000 });
-        bbox = await getBBox(page, step.selector);
-      } catch (e) {
-        console.warn(`  Selector not found: ${step.selector} — skipping`);
-        continue;
-      }
-    }
-
-    // Hold before action
-    if (step.camera?.holdBefore) {
-      await sleep(step.camera.holdBefore * 1000);
-    }
-
-    // Move cursor to element
-    if (bbox) {
-      await moveCursor(page, bbox.centerX, bbox.centerY);
-    }
-
-    // Log action for zoompan generator
-    const tAbs = Date.now();
-    actionsLog.push({
-      stepId: step.id,
-      t: actionsLog.length > 0 ? (tAbs - actionsLog[0].tAbs) / 1000 : 0,
-      tAbs,
-      type: step.action,
-      selector: step.selector,
-      bbox,
-      camera: step.camera,
-      screen: step.screen,
-    });
-    if (actionsLog[0] && !actionsLog[0].tAbs) actionsLog[0].tAbs = tAbs;
-
-    // Execute action
-    if (step.action === 'scroll' && step.scrollTo) {
-      const steps = step.scrollSteps || 10;
-      const delay = step.scrollDelay || 300;
-      // Scroll element into view smoothly in increments
-      const targetY = await page.evaluate((sel) => {
-        const el = document.querySelector(sel);
-        return el ? el.getBoundingClientRect().top + window.scrollY : 0;
-      }, step.scrollTo);
-      const startY = await page.evaluate(() => window.scrollY);
-      const increment = (targetY - startY) / steps;
-      for (let i = 0; i < steps; i++) {
-        await page.evaluate((inc) => window.scrollBy(0, inc), increment);
-        await sleep(delay);
-      }
-    } else if (step.action === 'type' && step.selector) {
-      await typeSlowly(page, step.selector, resolveValue(step.value));
-    } else if (step.action === 'click' && step.selector) {
-      await page.click(step.selector);
-    } else if (step.action === 'select' && step.selector) {
-      await page.select(step.selector, resolveValue(step.value));
-    } else if (step.action === 'hover') {
-      // Already moved cursor above — just hold
-    }
-
-    // Hold after action
-    if (step.camera?.holdAfter) {
-      await sleep(step.camera.holdAfter * 1000);
-    }
+  } catch (err) {
+    console.error(`Demo flow failed: ${err.message}`);
+    await recorder.stop();
+    await browser.close();
+    process.exit(1);
   }
 
-  console.log('Stopping recording...');
   await recorder.stop();
   await browser.close();
+  console.log('Recording stopped.');
 
-  // Normalise timestamps so t=0 is start of recording
-  const t0 = actionsLog[0]?.tAbs || 0;
-  for (const entry of actionsLog) {
-    entry.t = (entry.tAbs - t0) / 1000;
-    delete entry.tAbs;
-  }
+  fs.writeFileSync(
+    `/tmp/demo_actions_${demoType}.json`,
+    JSON.stringify(actionsLog, null, 2)
+  );
 
-  fs.writeFileSync(ACTIONS_LOG, JSON.stringify(actionsLog, null, 2));
-  console.log(`Actions log: ${ACTIONS_LOG}`);
-  console.log(`Raw video: ${VIDEO_OUT}`);
-  console.log('Done.');
+  console.log(`Video saved: ${outputVideo}`);
+  console.log(`Actions log: /tmp/demo_actions_${demoType}.json`);
 })();

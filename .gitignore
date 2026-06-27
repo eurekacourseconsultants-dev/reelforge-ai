@@ -14,3 +14,4 @@ out/
 avatars/
 .open-next/
 .wrangler/
+.env.dreamina

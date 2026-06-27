@@ -84,16 +84,6 @@ const STATUS_IDX = {
   scene:          { pending: 0, classified: 1, clips_ready: 2, video_ready: 3, complete: 4 },
 }
 
-const ESTIMATES = {
-  avatar_lipsync: '~10–20 min', // Dreamina, single step
-  avatar_scene:   '~40–60 min', // PixVerse, I2V chaining
-  scene:          '~60–90 min', // PixVerse, fresh actor + I2V chaining
-}
-
-// Video type definitions, per the implementation plan:
-// Type 1 -> Dreamina (talking actor, pick actor, paste script)
-// Type 2 -> PixVerse (pick actor, describe scene)
-// Type 3 -> PixVerse (no actor selection, describe scene + actor generated on the fly)
 const VIDEO_TYPES = [
   { id: 1, mode: 'avatar_lipsync', title: 'Talking Actor', desc: 'Pick an actor, paste a script', needsActor: true },
   { id: 2, mode: 'avatar_scene',   title: 'Scene + Actor', desc: 'Pick an actor, describe a scene', needsActor: true },
@@ -102,32 +92,31 @@ const VIDEO_TYPES = [
 ]
 
 const DEMO_TYPES = [
-  { id: 'signup_login',             label: '1. Signup + Login' },
-  { id: 'wizard_website_templates', label: '2. Setup Wizard + Website + Templates' },
-  { id: 'products',                 label: '3. Products & Services' },
-  { id: 'orders',                   label: '4. Orders' },
-  { id: 'promotions',               label: '5. Promotions' },
-  { id: 'customers',                label: '6. Customers' },
-  { id: 'announcements',            label: '7. Announcements' },
-  { id: 'payments_stripe_connect',  label: '8. Payment Setup (Stripe Connect)' },
-  { id: 'store_agreement',          label: '9. Store Agreement' },
-  { id: 'ai_mentor_action_plans',   label: '10. AI Mentor + Action Plans' },
+  { id: 'signup_login',                 label: '1. Signup + Login' },
+  { id: 'wizard_website_templates',     label: '2. Setup Wizard + Website + Templates' },
+  { id: 'products',                     label: '3. Products & Services' },
+  { id: 'orders',                       label: '4. Orders' },
+  { id: 'promotions',                   label: '5. Promotions' },
+  { id: 'customers',                    label: '6. Customers' },
+  { id: 'announcements',                label: '7. Announcements' },
+  { id: 'payments_stripe_connect',      label: '8. Payment Setup (Stripe Connect)' },
+  { id: 'store_agreement',              label: '9. Store Agreement' },
+  { id: 'ai_mentor_action_plans',       label: '10. AI Mentor + Action Plans' },
   { id: 'referrals_referrer_dashboard', label: '11. Referrals + Referrer Dashboard' },
-  { id: 'staff',                    label: '12. Staff' },
-  { id: 'billing_upgrade',          label: '13. Billing + Upgrade' },
-  { id: 'account',                  label: '14. Account' },
-  { id: 'main_dashboard',           label: '15. Main Dashboard' },
+  { id: 'staff',                        label: '12. Staff' },
+  { id: 'billing_upgrade',              label: '13. Billing + Upgrade' },
+  { id: 'account',                      label: '14. Account' },
+  { id: 'main_dashboard',               label: '15. Main Dashboard' },
 ]
 
-// Form schemas per demo type — variables the user fills in
 const DEMO_FORM_SCHEMAS = {
   signup_login: [
-    { id: 'demo_full_name',   label: 'Demo full name',    placeholder: 'Sarah Tan',           required: true },
-    { id: 'demo_email',       label: 'Demo email',         placeholder: 'sarah@example.com',   required: true },
-    { id: 'demo_phone',       label: 'Demo phone',         placeholder: '91234567',            required: true },
-    { id: 'demo_address',     label: 'Demo address',       placeholder: '123 Orchard Road',    required: true },
-    { id: 'demo_postal_code', label: 'Demo postal code',   placeholder: '238858',              required: true },
-    { id: 'demo_password',    label: 'Demo password',      placeholder: 'Demo@12345',          required: true },
+    { id: 'demo_full_name',   label: 'Demo full name',   placeholder: 'Sarah Tan',         required: true },
+    { id: 'demo_email',       label: 'Demo email',        placeholder: 'sarah@example.com', required: true },
+    { id: 'demo_phone',       label: 'Demo phone',        placeholder: '91234567',          required: true },
+    { id: 'demo_address',     label: 'Demo address',      placeholder: '123 Orchard Road',  required: true },
+    { id: 'demo_postal_code', label: 'Demo postal code',  placeholder: '238858',            required: true },
+    { id: 'demo_password',    label: 'Demo password',     placeholder: 'Demo@12345',        required: true },
   ],
 }
 
@@ -145,28 +134,32 @@ function getStates(mode, status) {
   return steps.map((_, i) => i < idx ? 'done' : i === idx ? 'active' : 'idle')
 }
 
-
-
 export default function Home() {
-  const [videoType, setVideoType] = useState(null) // 1, 2, or 3
-  const [prompt, setPrompt]       = useState('')
-  const [actors, setActors]       = useState([])
-  const [selectedId, setSelected] = useState(null)
-  const [voiceName, setVoiceName] = useState('')
+  const [videoType, setVideoType]   = useState(null)
+  const [prompt, setPrompt]         = useState('')
+  const [actors, setActors]         = useState([])
+  const [selectedId, setSelected]   = useState(null)
+  const [voiceName, setVoiceName]   = useState('')
   const [actionText, setActionText] = useState(DEFAULT_ACTION_TEXT)
-  const [jobId, setJobId]         = useState(null)
-  const [jobStatus, setJobStatus] = useState(null)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState(null)
+  const [jobId, setJobId]           = useState(null)
+  const [jobStatus, setJobStatus]   = useState(null)
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState(null)
 
-  const [demoType, setDemoType]         = useState(null)
-  const [demoVariables, setDemoVars]   = useState({})
+  const [demoType, setDemoType]     = useState(null)
+  const [demoVariables, setDemoVariables] = useState({})
+
+  const [localTestLoading, setLocalTestLoading] = useState(false)
+  const [localTestUrl, setLocalTestUrl]         = useState(null)
+  const [localTestError, setLocalTestError]     = useState(null)
+  const [localTestLog, setLocalTestLog]         = useState(null)
+
   const [showGenModal, setShowGenModal] = useState(false)
   const [genPrefs, setGenPrefs]         = useState({ gender: '', age: '', environment: '', clothing: '', ethnicity: '' })
   const [generating, setGenerating]     = useState(false)
   const [genStatus, setGenStatus]       = useState(null)
   const [genError, setGenError]         = useState(null)
-  const [quota, setQuota]               = useState(null) // { count, limit, remaining }
+  const [quota, setQuota]               = useState(null)
 
   useEffect(() => { fetchActors(); fetchQuota() }, [])
 
@@ -206,7 +199,6 @@ export default function Home() {
     }, 15000)
   }
 
-  // Polls the actor list until a new file matching the expected filename shows up.
   function pollNewActor(filename) {
     const iv = setInterval(async () => {
       const res  = await fetch('/api/actors')
@@ -222,36 +214,22 @@ export default function Home() {
         fetchQuota()
       }
     }, 10000)
-    // Give up after 5 minutes so the UI doesn't spin forever if the GH Action failed
     setTimeout(() => clearInterval(iv), 5 * 60 * 1000)
   }
 
   async function handleForge() {
-    if (!prompt.trim()) return
+    if (videoType !== 4 && !prompt.trim()) return
     setLoading(true)
     setError(null)
     try {
       const selectedType = VIDEO_TYPES.find(t => t.id === videoType)
       const payload = videoType === 1
-        ? {
-            video_type: 1,
-            avatar_id: selectedId,
-            script_text: prompt,
-            voice_name: voiceName,
-            action_text: actionText,
-          }
+        ? { video_type: 1, avatar_id: selectedId, script_text: prompt, voice_name: voiceName, action_text: actionText }
         : videoType === 4
-        ? {
-            video_type: 4,
-            demo_type: demoType,
-            variables: demoVariables,
-          }
-        : {
-            prompt,
-            avatar_id: selectedType?.needsActor ? selectedId : null,
-            video_type: videoType,
-          }
-      const res = await fetch('/api/start-job', {
+        ? { video_type: 4, demo_type: demoType, variables: demoVariables }
+        : { prompt, avatar_id: selectedType?.needsActor ? selectedId : null, video_type: videoType }
+
+      const res  = await fetch('/api/start-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -266,12 +244,34 @@ export default function Home() {
     }
   }
 
+  async function handleTestLocal() {
+    setLocalTestLoading(true)
+    setLocalTestError(null)
+    setLocalTestUrl(null)
+    setLocalTestLog(null)
+    try {
+      const res = await fetch('/api/run-demo-local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ demo_type: demoType, variables: demoVariables }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setLocalTestUrl(data.preview_url)
+      setLocalTestLog(data.actions_log)
+    } catch (err) {
+      setLocalTestError(err.message)
+    } finally {
+      setLocalTestLoading(false)
+    }
+  }
+
   async function handleGenerateActor() {
     setGenerating(true)
     setGenError(null)
     setGenStatus('pending')
     try {
-      const res = await fetch('/api/generate-actor', {
+      const res  = await fetch('/api/generate-actor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(genPrefs),
@@ -286,12 +286,8 @@ export default function Home() {
     }
   }
 
-  const ageValid = genPrefs.age && Number(genPrefs.age) > 0 && Number(genPrefs.age) < 120
+  const ageValid    = genPrefs.age && Number(genPrefs.age) > 0 && Number(genPrefs.age) < 120
   const canGenerate = !generating && genPrefs.gender && ageValid && genPrefs.environment && (quota?.remaining ?? 1) > 0
-
-  const mode   = jobStatus?.pipeline_mode
-  const steps  = STEPS[mode] || []
-  const states = jobStatus ? getStates(mode, jobStatus.status) : []
   const currentType = VIDEO_TYPES.find(t => t.id === videoType)
 
   return (
@@ -304,11 +300,12 @@ export default function Home() {
 
       {!jobId && (
         <>
+          {/* Step 1: Choose video type */}
           <div style={S.section}>
             <div style={S.label}>1. Choose video type</div>
             <div style={S.typeRow}>
               {VIDEO_TYPES.map(t => (
-                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null); setVoiceName('') }}>
+                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null); setVoiceName(''); setDemoType(null); setDemoVariables({}) }}>
                   <div style={S.typeTitle}>{t.title}</div>
                   <div style={S.typeDesc}>{t.desc}</div>
                 </div>
@@ -316,62 +313,102 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Demo Builder flow */}
           {videoType === 4 && (
-        <>
-          <div style={S.section}>
-            <div style={S.label}>2. Choose a demo</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-              {DEMO_TYPES.map(d => (
-                <div
-                  key={d.id}
-                  onClick={() => { setDemoType(d.id); setDemoVars({}) }}
-                  style={{
-                    padding: '12px 16px',
-                    border: `2px solid ${demoType === d.id ? C.accent : C.border}`,
-                    borderRadius: '8px',
-                    background: demoType === d.id ? C.accentDim : C.surface,
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: demoType === d.id ? '700' : '400',
-                    color: demoType === d.id ? C.accent : C.text,
-                  }}
-                >
-                  {d.label}
+            <>
+              <div style={S.section}>
+                <div style={S.label}>2. Choose a demo</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                  {DEMO_TYPES.map(d => (
+                    <div
+                      key={d.id}
+                      onClick={() => { setDemoType(d.id); setDemoVariables({}) }}
+                      style={{
+                        padding: '12px 16px',
+                        border: `2px solid ${demoType === d.id ? C.accent : C.border}`,
+                        borderRadius: '8px',
+                        background: demoType === d.id ? C.accentDim : C.surface,
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: demoType === d.id ? '700' : '400',
+                        color: demoType === d.id ? C.accent : C.text,
+                      }}
+                    >
+                      {d.label}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {demoType && DEMO_FORM_SCHEMAS[demoType] && (
-            <div style={S.section}>
-              <div style={S.label}>3. Fill in demo details</div>
-              {DEMO_FORM_SCHEMAS[demoType].map(field => (
-                <div key={field.id} style={{ marginBottom: '16px' }}>
-                  <div style={S.fieldLabel}>{field.label}{field.required && <span style={{ color: C.error }}> *</span>}</div>
-                  <input
-                    style={S.input}
-                    placeholder={field.placeholder}
-                    value={demoVariables[field.id] || ''}
-                    onChange={e => setDemoVars(v => ({ ...v, [field.id]: e.target.value }))}
-                  />
+              {demoType && (
+                <div style={S.section}>
+                  <div style={S.label}>3. Fill in demo details</div>
+                  {DEMO_FORM_SCHEMAS[demoType] ? (
+                    <>
+                      {DEMO_FORM_SCHEMAS[demoType].map(field => (
+                        <div key={field.id} style={{ marginBottom: '16px' }}>
+                          <div style={S.fieldLabel}>{field.label}{field.required && <span style={{ color: C.error }}> *</span>}</div>
+                          <input
+                            style={S.input}
+                            placeholder={field.placeholder}
+                            value={demoVariables[field.id] || ''}
+                            onChange={e => setDemoVariables(v => ({ ...v, [field.id]: e.target.value }))}
+                          />
+                        </div>
+                      ))}
+                      {(() => {
+                        const formValid = DEMO_FORM_SCHEMAS[demoType].every(f => !f.required || demoVariables[f.id])
+                        return (
+                          <>
+                            <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                              <button
+                                style={{ ...S.button, flex: 1, background: C.surface, color: C.accent, border: `2px solid ${C.accent}`, opacity: formValid ? 1 : 0.5 }}
+                                onClick={handleTestLocal}
+                                disabled={localTestLoading || !formValid}
+                              >
+                                {localTestLoading ? 'Running locally...' : '\ud83e\uddea Test Locally'}
+                              </button>
+                              <button
+                                style={{ ...S.button, flex: 1, opacity: formValid ? 1 : 0.5 }}
+                                onClick={handleForge}
+                                disabled={loading || !formValid}
+                              >
+                                {loading ? 'Generating Demo...' : 'Generate Demo'}
+                              </button>
+                            </div>
+
+                            {localTestError && (
+                              <div style={{ color: C.error, fontSize: '13px', marginBottom: '12px', whiteSpace: 'pre-wrap' }}>
+                                {localTestError}
+                              </div>
+                            )}
+
+                            {localTestUrl && (
+                              <div style={{ marginBottom: '20px' }}>
+                                <div style={{ ...S.fieldLabel, marginBottom: '8px' }}>Local test result:</div>
+                                <video
+                                  src={localTestUrl}
+                                  controls
+                                  style={{ width: '100%', borderRadius: '8px', border: `1px solid ${C.border}` }}
+                                />
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </>
+                  ) : (
+                    <div style={{ color: C.muted, fontSize: '14px', fontStyle: 'italic' }}>
+                      Form configuration for "{demoType}" is coming soon.
+                    </div>
+                  )}
                 </div>
-              ))}
-              <button
-                style={{
-                  ...S.button,
-                  opacity: DEMO_FORM_SCHEMAS[demoType].every(f => !f.required || demoVariables[f.id]) ? 1 : 0.5
-                }}
-                onClick={handleForge}
-                disabled={loading || !DEMO_FORM_SCHEMAS[demoType].every(f => !f.required || demoVariables[f.id])}
-              >
-                {loading ? 'Generating Demo...' : 'Generate Demo'}
-              </button>
-            </div>
+              )}
+            </>
           )}
-        </>
-      )}
 
-      {videoType && videoType !== 4 && currentType?.needsActor && (
+          {/* Talking Actor / Scene flows */}
+          {videoType && videoType !== 4 && currentType?.needsActor && (
             <div style={S.section}>
               <div style={S.label}>2. Choose an actor</div>
               <div style={S.avatarGrid}>
@@ -381,7 +418,6 @@ export default function Home() {
                     <div style={S.avatarLabel}>{actor.environment} · {actor.gender} · {actor.age}</div>
                   </div>
                 ))}
-
                 <div
                   style={{ ...S.avatarCard(false), display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '9/16', cursor: 'pointer' }}
                   onClick={() => { setShowGenModal(true); setGenStatus(null); setGenError(null) }}
@@ -390,7 +426,6 @@ export default function Home() {
                   <span style={{ fontSize: '10px', color: C.muted, marginTop: '4px' }}>New Actor</span>
                 </div>
               </div>
-
               {selectedId && <div style={{ fontSize: '12px', color: C.accent }}>✓ Actor selected</div>}
               {!selectedId && <div style={{ fontSize: '12px', color: C.muted }}>Select an actor to continue</div>}
             </div>
@@ -417,9 +452,7 @@ export default function Home() {
                 </div>
                 <textarea
                   style={S.textarea}
-                  placeholder={videoType === 1
-                    ? 'Hey, I\'m running my business smarter now with...'
-                    : 'A woman walking confidently through a neon-lit city at night...'}
+                  placeholder={videoType === 1 ? "Hey, I'm running my business smarter now with..." : 'A woman walking confidently through a neon-lit city at night...'}
                   value={prompt}
                   maxLength={videoType === 1 ? 240 : undefined}
                   onChange={e => setPrompt(e.target.value)}
@@ -429,7 +462,6 @@ export default function Home() {
                     {prompt.length} / 240
                   </div>
                 )}
-
                 {videoType === 1 && (
                   <>
                     <div style={{ ...S.fieldLabel, marginTop: '16px' }}>Action <span style={{ color: C.muted, fontWeight: '400' }}>(optional, editable)</span></div>
@@ -443,7 +475,6 @@ export default function Home() {
                     />
                   </>
                 )}
-
                 <button
                   style={{ ...S.button, opacity: (currentType?.needsActor && !selectedId) || (videoType === 1 && !voiceName) ? 0.5 : 1 }}
                   onClick={handleForge}
@@ -500,14 +531,12 @@ export default function Home() {
                 {quota.remaining} of {quota.limit} generations left today
               </div>
             )}
-
             <div style={S.fieldLabel}>Gender</div>
             <div style={S.optionRow}>
               {['Female', 'Male'].map(g => (
                 <button key={g} style={optionBtn(genPrefs.gender === g)} onClick={() => setGenPrefs(p => ({ ...p, gender: g }))}>{g}</button>
               ))}
             </div>
-
             <div style={S.fieldLabel}>Age</div>
             <input
               style={{ ...S.input, width: '120px' }}
@@ -518,7 +547,6 @@ export default function Home() {
               value={genPrefs.age}
               onChange={e => setGenPrefs(p => ({ ...p, age: e.target.value }))}
             />
-
             <div style={S.fieldLabel}>Environment</div>
             <input
               style={S.input}
@@ -526,7 +554,6 @@ export default function Home() {
               value={genPrefs.environment}
               onChange={e => setGenPrefs(p => ({ ...p, environment: e.target.value }))}
             />
-
             <div style={S.fieldLabel}>Ethnicity <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
             <input
               style={S.input}
@@ -534,7 +561,6 @@ export default function Home() {
               value={genPrefs.ethnicity}
               onChange={e => setGenPrefs(p => ({ ...p, ethnicity: e.target.value }))}
             />
-
             <div style={S.fieldLabel}>Clothing <span style={{ color: C.muted, fontWeight: '400' }}>(optional)</span></div>
             <input
               style={S.input}
@@ -542,7 +568,6 @@ export default function Home() {
               value={genPrefs.clothing}
               onChange={e => setGenPrefs(p => ({ ...p, clothing: e.target.value }))}
             />
-
             {genStatus === 'pending' && (
               <div style={{ color: C.accent, fontSize: '13px', margin: '12px 0' }}>
                 ⏳ Generating... this takes ~1–2 min. Gallery updates automatically.
@@ -553,7 +578,6 @@ export default function Home() {
                 {genError || 'Generation failed.'}
               </div>
             )}
-
             <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
               <button
                 style={{ ...S.button, marginTop: 0, flex: 1, opacity: canGenerate ? 1 : 0.5 }}

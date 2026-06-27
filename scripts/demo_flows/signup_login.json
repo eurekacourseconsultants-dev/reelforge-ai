@@ -1,396 +1,190 @@
 {
   "id": "signup_login",
-  "title": "Signup + Login",
-  "phases": [
-    1
-  ],
-  "baseUrl": "https://launchsteady.sg",
-  "viewport": {
-    "width": 1280,
-    "height": 800
-  },
+  "start_url": "https://launchsteady.sg/",
   "steps": [
     {
       "id": "landing_land",
-      "screen": "/",
+      "desc": "Land on the homepage",
       "action": "navigate",
-      "description": "Land on launchsteady.sg homepage \u2014 hold on hero",
-      "camera": {
-        "type": "pan",
-        "direction": "top-to-bottom",
-        "duration": 2.5
-      }
+      "url": "https://launchsteady.sg/"
     },
     {
       "id": "landing_scroll_pricing",
-      "screen": "/",
+      "desc": "Scroll down to the pricing section",
       "action": "scroll",
-      "scrollTo": "#pricing",
-      "description": "Scroll down slowly through features to pricing section",
-      "scrollSteps": 12,
-      "scrollDelay": 300,
-      "camera": {
-        "type": "pan",
-        "direction": "top-to-bottom",
-        "duration": 4.0
-      }
+      "target": "#pricing"
+    },
+    {
+      "id": "landing_hold",
+      "desc": "Hold on pricing section so viewer can see it before CTA click",
+      "action": "wait",
+      "duration": 3000
     },
     {
       "id": "landing_cta",
-      "screen": "/",
-      "action": "click",
-      "selector": "#pricing a.btn.btn-accent.btn-full",
-      "description": "Zoom into Standard plan Start free trial \u2014 click it",
-      "camera": {
-        "type": "zoom",
-        "target": "#pricing a.btn.btn-accent.btn-full",
-        "holdBefore": 0.8,
-        "holdAfter": 1.0
-      }
-    },
-    {
-      "id": "signup_land",
-      "screen": "/signup",
-      "action": "navigate",
-      "description": "Land on signup page",
-      "camera": {
-        "type": "pan",
-        "direction": "top-to-bottom",
-        "duration": 2.0
-      }
+      "desc": "Click Start free trial on the Professional card",
+      "action": "click_navigate",
+      "selector": ".pricing-grid > div:nth-child(2) a.btn",
+      "expected_url_contains": "/signup"
     },
     {
       "id": "signup_fullname",
-      "screen": "/signup",
+      "desc": "Type full name",
       "action": "type",
       "selector": "#fullName",
-      "value": "{{demo_full_name}}",
-      "description": "Type full name",
-      "camera": {
-        "type": "zoom",
-        "target": "#fullName",
-        "holdBefore": 0.5,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_full_name}}"
     },
     {
       "id": "signup_email",
-      "screen": "/signup",
+      "desc": "Type email address",
       "action": "type",
       "selector": "#email",
-      "value": "{{demo_email}}",
-      "description": "Type email address",
-      "camera": {
-        "type": "zoom",
-        "target": "#email",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_email}}"
     },
     {
       "id": "signup_country",
-      "screen": "/signup",
+      "desc": "Select Singapore country code",
       "action": "select",
-      "selector": "select",
-      "value": "Singapore",
-      "description": "Select country for phone",
-      "camera": {
-        "type": "zoom",
-        "target": "select",
-        "holdBefore": 0.3,
-        "holdAfter": 0.5
-      }
+      "selector": "select:not(#gender)",
+      "value": "Singapore"
     },
     {
       "id": "signup_phone",
-      "screen": "/signup",
+      "desc": "Type phone number",
       "action": "type",
       "selector": "#phone",
-      "value": "{{demo_phone}}",
-      "description": "Type phone number",
-      "camera": {
-        "type": "zoom",
-        "target": "#phone",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_phone}}"
     },
     {
       "id": "signup_gender",
-      "screen": "/signup",
+      "desc": "Select gender",
       "action": "select",
       "selector": "#gender",
-      "value": "female",
-      "description": "Select gender",
-      "camera": {
-        "type": "zoom",
-        "target": "#gender",
-        "holdBefore": 0.3,
-        "holdAfter": 0.5
-      }
+      "value": "female"
     },
     {
       "id": "signup_address",
-      "screen": "/signup",
+      "desc": "Type address",
       "action": "type",
       "selector": "#address",
-      "value": "{{demo_address}}",
-      "description": "Type address",
-      "camera": {
-        "type": "zoom",
-        "target": "#address",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_address}}"
     },
     {
       "id": "signup_postal",
-      "screen": "/signup",
+      "desc": "Type postal code",
       "action": "type",
       "selector": "#postalCode",
-      "value": "{{demo_postal_code}}",
-      "description": "Type postal code",
-      "camera": {
-        "type": "zoom",
-        "target": "#postalCode",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_postal_code}}"
     },
     {
       "id": "signup_password",
-      "screen": "/signup",
+      "desc": "Type password",
       "action": "type",
       "selector": "#password",
-      "value": "{{demo_password}}",
-      "description": "Type password",
-      "camera": {
-        "type": "zoom",
-        "target": "#password",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_password}}"
     },
     {
       "id": "signup_confirm_password",
-      "screen": "/signup",
+      "desc": "Confirm password",
       "action": "type",
       "selector": "#confirmPassword",
-      "value": "{{demo_password}}",
-      "description": "Confirm password",
-      "camera": {
-        "type": "zoom",
-        "target": "#confirmPassword",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_password}}"
     },
     {
       "id": "signup_terms",
-      "screen": "/signup",
-      "action": "click",
-      "selector": "div[style*='border-radius:8px']",
-      "description": "Tick terms and conditions",
-      "camera": {
-        "type": "zoom",
-        "target": ".auth-card > div[style*='backgroundColor']",
-        "holdBefore": 0.5,
-        "holdAfter": 1.0
-      }
+      "desc": "Tick the terms checkbox \u2014 click the outer div that wraps the custom checkbox",
+      "action": "click_by_text",
+      "containsText": "I have read and agree",
+      "clickAncestor": true
     },
     {
-      "id": "signup_cta_hold",
-      "screen": "/signup",
-      "action": "hover",
-      "selector": "button[type='submit']",
-      "description": "Move cursor to Continue button \u2014 do not click",
-      "camera": {
-        "type": "zoom",
-        "target": "button[type='submit']",
-        "holdBefore": 0.5,
-        "holdAfter": 1.5
-      }
+      "id": "signup_submit",
+      "desc": "Click Continue to create account",
+      "action": "click_navigate",
+      "selector": "button[type=submit]",
+      "expected_url_contains": "/onboarding/package"
     },
     {
       "id": "package_land",
-      "screen": "/onboarding/package",
-      "action": "navigate",
-      "description": "Navigate to package selection page",
-      "camera": {
-        "type": "pan",
-        "direction": "left-to-right",
-        "duration": 2.5
-      }
+      "desc": "Hold on package selection page",
+      "action": "wait",
+      "duration": 400
     },
     {
-      "id": "package_basic",
-      "screen": "/onboarding/package",
-      "action": "hover",
-      "selector": ".package-grid > div:nth-child(1)",
-      "description": "Pan over Basic plan",
-      "camera": {
-        "type": "zoom",
-        "target": ".package-card:nth-child(1)",
-        "holdBefore": 0.3,
-        "holdAfter": 1.0
-      }
-    },
-    {
-      "id": "package_standard",
-      "screen": "/onboarding/package",
-      "action": "hover",
-      "selector": ".package-grid > div:nth-child(2)",
-      "description": "Settle on Standard plan",
-      "camera": {
-        "type": "zoom",
-        "target": ".package-card:nth-child(2)",
-        "holdBefore": 0.3,
-        "holdAfter": 1.5
-      }
-    },
-    {
-      "id": "package_pro",
-      "screen": "/onboarding/package",
-      "action": "hover",
-      "selector": ".package-grid > div:nth-child(3)",
-      "description": "Pan over Professional plan",
-      "camera": {
-        "type": "zoom",
-        "target": ".package-card:nth-child(3)",
-        "holdBefore": 0.3,
-        "holdAfter": 1.0
-      }
-    },
-    {
-      "id": "package_cta_hold",
-      "screen": "/onboarding/package",
-      "action": "hover",
-      "selector": ".package-grid > div:nth-child(2) button",
-      "description": "Cursor settles on Standard CTA \u2014 do not click",
-      "camera": {
-        "type": "zoom",
-        "target": ".package-card:nth-child(2) button",
-        "holdBefore": 0.5,
-        "holdAfter": 1.5
-      }
+      "id": "package_select",
+      "desc": "Click Professional plan \u2014 3rd package card button",
+      "action": "click_navigate",
+      "selector": ".package-card:nth-child(3) button.btn",
+      "expected_url_contains": "/onboarding/billing"
     },
     {
       "id": "billing_land",
-      "screen": "/onboarding/billing",
+      "desc": "Hold on billing page",
+      "action": "wait",
+      "duration": 400
+    },
+    {
+      "id": "billing_visual_click",
+      "desc": "Visual click on billing CTA \u2014 no actual submission",
+      "action": "visual_click",
+      "selector": ".auth-form button[type=submit]"
+    },
+    {
+      "id": "billing_hold",
+      "desc": "Hold on billing page",
+      "action": "wait",
+      "duration": 300
+    },
+    {
+      "id": "success_navigate",
+      "desc": "Navigate to success page to show account created",
       "action": "navigate",
-      "description": "Navigate to billing page",
-      "camera": {
-        "type": "pan",
-        "direction": "top-to-bottom",
-        "duration": 1.5
-      },
-      "seedSessionStorage": {
-        "ls_package": "B",
-        "ls_signup_from_variables": true
-      }
+      "url": "https://launchsteady.sg/onboarding/success"
     },
     {
-      "id": "billing_summary",
-      "screen": "/onboarding/billing",
-      "action": "hover",
-      "selector": ".billing-summary",
-      "description": "Zoom into billing summary \u2014 highlight $0 due today",
-      "camera": {
-        "type": "zoom",
-        "target": ".billing-summary",
-        "holdBefore": 0.5,
-        "holdAfter": 2.0
-      }
+      "id": "success_hold",
+      "desc": "Hold on success page",
+      "action": "wait",
+      "duration": 300
     },
     {
-      "id": "billing_card",
-      "screen": "/onboarding/billing",
-      "action": "hover",
-      "selector": ".card-element-wrapper",
-      "description": "Zoom into card field",
-      "camera": {
-        "type": "zoom",
-        "target": ".card-element-wrapper",
-        "holdBefore": 0.5,
-        "holdAfter": 1.5
-      }
+      "id": "success_signin",
+      "desc": "Click Sign in to continue button on success page",
+      "action": "click_navigate",
+      "selector": ".btn.btn-accent.btn-full",
+      "expected_url_contains": "/login"
     },
     {
-      "id": "billing_cta_hold",
-      "screen": "/onboarding/billing",
-      "action": "hover",
-      "selector": ".auth-form button.btn-accent",
-      "description": "Cursor settles on Start free trial \u2014 do not click",
-      "camera": {
-        "type": "zoom",
-        "target": "button[type='submit']",
-        "holdBefore": 0.5,
-        "holdAfter": 1.5
-      }
-    },
-    {
-      "id": "success_land",
-      "screen": "/onboarding/success",
+      "id": "login_navigate",
+      "desc": "Navigate to login page",
       "action": "navigate",
-      "description": "Navigate to success page",
-      "camera": {
-        "type": "zoom",
-        "target": ".auth-card",
-        "holdBefore": 0.5,
-        "holdAfter": 3.0
-      }
-    },
-    {
-      "id": "login_land",
-      "screen": "/login",
-      "action": "navigate",
-      "description": "Navigate to login page",
-      "camera": {
-        "type": "pan",
-        "direction": "top-to-bottom",
-        "duration": 1.5
-      }
+      "url": "https://launchsteady.sg/login"
     },
     {
       "id": "login_email",
-      "screen": "/login",
+      "desc": "Type email on login page",
       "action": "type",
       "selector": "#email",
-      "value": "{{demo_email}}",
-      "description": "Type email on login form",
-      "camera": {
-        "type": "zoom",
-        "target": "#email",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_email}}"
     },
     {
       "id": "login_password",
-      "screen": "/login",
+      "desc": "Type password on login page",
       "action": "type",
       "selector": "#password",
-      "value": "{{demo_password}}",
-      "description": "Type password on login form",
-      "camera": {
-        "type": "zoom",
-        "target": "#password",
-        "holdBefore": 0.3,
-        "holdAfter": 0.8
-      }
+      "value": "{{demo_password}}"
     },
     {
-      "id": "login_cta_hold",
-      "screen": "/login",
+      "id": "login_hover_submit",
+      "desc": "Hover over login submit \u2014 do not click",
       "action": "hover",
-      "selector": "button[type='submit']",
-      "description": "Cursor settles on Sign in button \u2014 hold for narration finish",
-      "camera": {
-        "type": "zoom",
-        "target": "button[type='submit']",
-        "holdBefore": 0.5,
-        "holdAfter": 2.0
-      }
+      "selector": "button[type=submit]"
+    },
+    {
+      "id": "login_hold",
+      "desc": "Hold on login page to end demo",
+      "action": "wait",
+      "duration": 300
     }
   ]
 }

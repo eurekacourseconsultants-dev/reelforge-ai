@@ -46,9 +46,9 @@ jobs:
         run: |
           node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}'
 
-      - name: Run zoompan pass (produce final 9:16 portrait video)
+      - name: Composite onto laptop mockup (produce final 9:16 portrait video)
         run: |
-          node scripts/build_demo_zoompan.js '${{ inputs.demo_type }}'
+          node scripts/composite_demo.js '${{ inputs.demo_type }}'
 
       - name: Upload to R2
         env:

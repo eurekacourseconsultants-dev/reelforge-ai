@@ -64,19 +64,16 @@ async function writeCounter(data) {
 }
 
 // Builds the PixVerse prompt text from structured fields.
-function buildPrompt({ gender, age, environment, clothing }) {
+function buildPrompt({ gender, age, environment, clothing, ethnicity }) {
   const genderWord = gender === 'Male' ? 'man' : gender === 'Female' ? 'woman' : 'person'
-  const envText = ENVIRONMENT_TEXT[environment] || environment
+  const ethnicityText = ethnicity ? ethnicity.toLowerCase() : 'Asian'
+  // Environment is now freeform text from the user (e.g. "a park", "inside a car").
+  // We lightly wrap it into a natural scene description rather than relying on
+  // a fixed lookup table, so any phrase the user types still reads naturally.
+  const envText = `in ${environment}, natural lighting, soft shallow depth of field with blurred background`
   const clothingText = clothing ? clothing.toLowerCase() : 'casual smart attire'
 
-  return `A photorealistic Asian ${genderWord}, ${age} years old, chest-up portrait, facing directly at camera, ${envText}, soft shallow depth of field with blurred background, calm confident smile, ${clothingText}, photorealistic`
-}
-
-const ENVIRONMENT_TEXT = {
-  'HDB Home Office': 'sitting at a clean home office desk in a Singapore HDB flat, natural daylight from window, simple white walls, laptop visible in background',
-  'Cafe': 'sitting at a cozy cafe table in Singapore, warm ambient cafe lighting, blurred cafe interior with plants and wooden furniture in background, coffee cup visible on table',
-  'Outdoor': 'standing outdoors in a bright Singapore street scene, natural daylight, soft urban background',
-  'Studio': 'sitting against a clean studio backdrop, professional studio lighting, minimal background',
+  return `A photorealistic ${ethnicityText} ${genderWord}, ${age} years old, chest-up portrait, facing directly at camera, ${envText}, calm confident smile, ${clothingText}, photorealistic`
 }
 
 // Builds the filename following the locked convention: {environment}-{gender}-{age}-{number}.jpg
@@ -89,7 +86,7 @@ function buildFilename({ environment, gender, age }, number = '01') {
 export async function POST(req) {
   try {
     const body = await req.json()
-    const { gender, age, environment, clothing } = body
+    const { gender, age, environment, clothing, ethnicity } = body
 
     if (!gender || !age || !environment) {
       return NextResponse.json({ error: 'gender, age, and environment are required' }, { status: 400 })
@@ -105,7 +102,7 @@ export async function POST(req) {
       }, { status: 429 })
     }
 
-    const prompt = buildPrompt({ gender, age, environment, clothing })
+    const prompt = buildPrompt({ gender, age, environment, clothing, ethnicity })
     const filename = buildFilename({ environment, gender, age })
 
     if (!GH_REPO_OWNER || !GH_REPO_NAME || !GH_PAT) {
@@ -120,6 +117,7 @@ export async function POST(req) {
           Authorization: `Bearer ${GH_PAT}`,
           Accept: 'application/vnd.github+json',
           'Content-Type': 'application/json',
+          'User-Agent': 'reelforge-ai',
         },
         body: JSON.stringify({
           ref: 'main',
