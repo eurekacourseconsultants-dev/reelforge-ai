@@ -38,17 +38,25 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get install -y ffmpeg
 
-      - name: Run demo flow (capture raw video + actions log)
+      - name: Run demo flow — desktop
         env:
           JOB_ID: ${{ inputs.job_id }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}'
+        run: node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}'
 
-      - name: Composite onto laptop mockup (produce final 9:16 portrait video)
-        run: |
-          node scripts/composite_demo.js '${{ inputs.demo_type }}'
+      - name: Run demo flow — mobile
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}' --mobile
+
+      - name: Composite desktop (1920x1080)
+        run: node scripts/composite_demo.js '${{ inputs.demo_type }}'
+
+      - name: Composite mobile (1080x1920)
+        run: node scripts/composite_demo.js '${{ inputs.demo_type }}' --mobile
 
       - name: Upload to R2
         env:

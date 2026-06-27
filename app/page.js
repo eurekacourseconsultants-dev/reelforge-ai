@@ -188,7 +188,7 @@ export default function Home() {
       const res  = await fetch(`/api/job-status?id=${id}`)
       const data = await res.json()
       setJobStatus(data)
-      if (data.status === 'complete') {
+      if (data.status === 'complete' || data.status === 'done') {
         clearInterval(iv)
         setLoading(false)
         window.location.href = '/videos'

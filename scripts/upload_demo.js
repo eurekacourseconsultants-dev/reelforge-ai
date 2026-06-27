@@ -14,7 +14,8 @@ const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const VIDEO_PATH = `/tmp/demo_final_${DEMO_TYPE}.mp4`;
+const VIDEO_PATH_DESKTOP = `/tmp/demo_final_${DEMO_TYPE}_desktop.mp4`;
+const VIDEO_PATH_MOBILE  = `/tmp/demo_final_${DEMO_TYPE}_mobile.mp4`;
 
 async function patchSupabase(data) {
   if (!JOB_ID || !SUPABASE_URL || !SUPABASE_KEY) return;
@@ -56,19 +57,20 @@ async function uploadToR2(localPath, r2Key) {
 
 (async () => {
   try {
-    if (!fs.existsSync(VIDEO_PATH)) {
-      throw new Error(`Final video not found: ${VIDEO_PATH}`);
-    }
+    if (!fs.existsSync(VIDEO_PATH_DESKTOP)) throw new Error(`Desktop video not found: ${VIDEO_PATH_DESKTOP}`);
+    if (!fs.existsSync(VIDEO_PATH_MOBILE))  throw new Error(`Mobile video not found: ${VIDEO_PATH_MOBILE}`);
 
-    console.log(`Uploading ${VIDEO_PATH} to R2...`);
     await patchSupabase({ status: 'uploading' });
 
     const timestamp = Date.now();
-    const r2Key = `generated-demos/${DEMO_TYPE}_${timestamp}.mp4`;
-    const publicUrl = await uploadToR2(VIDEO_PATH, r2Key);
+    console.log('Uploading desktop...');
+    const desktopUrl = await uploadToR2(VIDEO_PATH_DESKTOP, `generated-demos/${DEMO_TYPE}_${timestamp}_desktop.mp4`);
+    console.log('Uploading mobile...');
+    const mobileUrl  = await uploadToR2(VIDEO_PATH_MOBILE,  `generated-demos/${DEMO_TYPE}_${timestamp}_mobile.mp4`);
 
-    console.log(`Uploaded: ${publicUrl}`);
-    await patchSupabase({ status: 'done', final_url: publicUrl });
+    console.log(`Desktop: ${desktopUrl}`);
+    console.log(`Mobile:  ${mobileUrl}`);
+    await patchSupabase({ status: 'done', final_url: JSON.stringify({ desktop: desktopUrl, mobile: mobileUrl }) });
     console.log('Job complete.');
   } catch (err) {
     console.error('Upload failed:', err.message);
