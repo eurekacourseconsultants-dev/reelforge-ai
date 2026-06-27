@@ -88,7 +88,7 @@ const VIDEO_TYPES = [
   { id: 1, mode: 'avatar_lipsync', title: 'Talking Actor', desc: 'Pick an actor, paste a script', needsActor: true },
   { id: 2, mode: 'avatar_scene',   title: 'Scene + Actor', desc: 'Pick an actor, describe a scene', needsActor: true },
   { id: 3, mode: 'scene',          title: 'Fresh Scene',   desc: 'Describe everything, actor generated for you', needsActor: false },
-  { id: 4, mode: 'demo',           title: 'Demo Builder',  desc: 'Auto-generate a product demo video', needsActor: false },
+  { id: 4, mode: 'demo',           title: 'Demo Builder',  desc: 'Auto-generate a product demo video', needsActor: false, href: '/demo-builder' },
 ]
 
 const DEMO_TYPES = [
@@ -305,7 +305,7 @@ export default function Home() {
             <div style={S.label}>1. Choose video type</div>
             <div style={S.typeRow}>
               {VIDEO_TYPES.map(t => (
-                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { setVideoType(t.id); setSelected(null); setVoiceName(''); setDemoType(null); setDemoVariables({}) }}>
+                <div key={t.id} style={S.typeCard(videoType === t.id)} onClick={() => { if (t.href) { window.location.href = t.href; return; } setVideoType(t.id); setSelected(null); setVoiceName(''); setDemoType(null); setDemoVariables({}) }}>
                   <div style={S.typeTitle}>{t.title}</div>
                   <div style={S.typeDesc}>{t.desc}</div>
                 </div>
