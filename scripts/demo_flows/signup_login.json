@@ -165,7 +165,8 @@
       "id": "login_navigate",
       "desc": "Navigate to login page",
       "action": "navigate",
-      "url": "https://launchsteady.sg/login"
+      "url": "https://launchsteady.sg/login",
+      "settle": 1000
     },
     {
       "id": "login_email",

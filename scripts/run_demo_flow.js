@@ -148,26 +148,14 @@ async function scrollToTarget(page, target, offset = 0) {
   const currentY = await page.evaluate(() => window.scrollY);
   const distance = targetY - currentY;
 
-  // Flick: scroll 85% of the way fast
-  const flickTarget = currentY + distance * 0.85;
-  const FLICK_STEPS = 25;
+  // Single smooth scroll to exact target position — no double-scroll jitter
+  const FLICK_STEPS = 30;
   for (let i = 1; i <= FLICK_STEPS; i++) {
     const t = easeOut(i / FLICK_STEPS);
-    await page.evaluate((y) => window.scrollTo(0, y), currentY + (flickTarget - currentY) * t);
-    await sleep(18);
+    await page.evaluate((y) => window.scrollTo(0, y), currentY + distance * t);
+    await sleep(16);
   }
-  await sleep(80);
-
-  // Precise snap: re-measure (accounts for any layout shift during scroll)
-  await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, target);
-  await sleep(300); // settle: scroll
-  if (offset !== 0) {
-    await page.evaluate((y) => window.scrollBy(0, y), offset);
-    await sleep(300);
-  }
+  await sleep(300); // settle
 }
 
 // ─── Human typing ─────────────────────────────────────────────────────────────
@@ -187,7 +175,7 @@ async function handleNavigate(page, step, cursorPos) {
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
   await injectCursor(page, isMobile);
   await moveCursor(page, cursorPos.x, cursorPos.y);
-  await sleep(200); // settle: fresh page navigation
+  await sleep(step.settle || 200); // settle: fresh page navigation
 }
 
 async function handleWait(page, step) {

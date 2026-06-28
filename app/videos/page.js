@@ -63,7 +63,7 @@ export default function VideosPage() {
       <div style={{ fontSize: '24px', fontWeight: '800', color: C.accent, marginBottom: '4px' }}>Video Library</div>
       <div style={{ fontSize: '13px', color: C.muted, marginBottom: '28px' }}>All generated demo videos</div>
 
-      {error && <div style={{ color: C.error, padding: '12px', background: '#1a0000', border: '1px solid #440000', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>}
+      {error && <div style={{ color: C.error, padding: '12px', background: '#1a0000', border: '1px solid ' + C.error, borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>}
       {loading && <div style={{ color: C.muted, textAlign: 'center', padding: '60px 0' }}>Loading...</div>}
       {!loading && videos.length === 0 && !error && <div style={{ color: C.muted, textAlign: 'center', padding: '60px 0' }}>No videos yet.</div>}
 
@@ -71,7 +71,7 @@ export default function VideosPage() {
         {videos.map(v => (
           <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: '14px', background: C.surface, border: '1px solid ' + C.border, borderRadius: '10px', padding: '10px 14px', minHeight: '72px' }}>
             <div onClick={() => setModal(v)} style={{ flexShrink: 0, cursor: 'pointer', width: isPortrait(v.key) ? '36px' : '64px', height: '56px', borderRadius: '6px', overflow: 'hidden', background: '#000', position: 'relative' }}>
-              <video src={v.url + '#t=0.5'} preload="metadata" muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <video src={v.url + '#t=3'} preload="metadata" muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)' }}>
                 <div style={{ width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderLeft: '8px solid white', marginLeft: '2px' }} />
               </div>
@@ -82,7 +82,7 @@ export default function VideosPage() {
             </div>
             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
               <button onClick={() => setModal(v)} style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid ' + C.accent, background: 'transparent', color: C.accent, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Open</button>
-              <button onClick={() => handleDelete(v.key)} disabled={deletingKey === v.key} style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid #440000', background: 'transparent', color: C.error, fontSize: '12px', fontWeight: '600', cursor: 'pointer', opacity: deletingKey === v.key ? 0.5 : 1 }}>{deletingKey === v.key ? '...' : 'Delete'}</button>
+              <button onClick={() => handleDelete(v.key)} disabled={deletingKey === v.key} style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid ' + C.error, background: 'transparent', color: C.error, fontSize: '12px', fontWeight: '600', cursor: 'pointer', opacity: deletingKey === v.key ? 0.5 : 1 }}>{deletingKey === v.key ? '...' : 'Delete'}</button>
             </div>
           </div>
         ))}
