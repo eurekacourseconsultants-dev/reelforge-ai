@@ -193,11 +193,10 @@
       "expected_url_contains": "/login"
     },
     {
-      "id": "login_navigate",
-      "desc": "Navigate to login page",
-      "action": "navigate",
-      "url": "https://launchsteady.sg/login",
-      "settle": 1000
+      "id": "login_page_settle",
+      "desc": "Wait for login page to fully load",
+      "action": "wait",
+      "duration": 1200
     },
     {
       "id": "login_email",
