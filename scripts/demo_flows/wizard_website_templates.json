@@ -4,7 +4,7 @@
   "steps": [
     {
       "id": "wizard_step1_land",
-      "desc": "Navigate to wizard step 1 — template selection",
+      "desc": "Navigate to wizard step 1 \u2014 template selection",
       "action": "navigate",
       "url": "https://launchsteady.sg/dashboard/wizard/step-1"
     },
@@ -18,7 +18,7 @@
       "id": "wizard_step1_select_template",
       "desc": "Click the first template card in the grid",
       "action": "click",
-      "selector": "div[style*='grid-template-columns'] > button:nth-child(1)"
+      "selector": "button:nth-of-type(2)"
     },
     {
       "id": "wizard_step1_hold",
@@ -35,20 +35,20 @@
     },
     {
       "id": "wizard_step2_settle",
-      "desc": "Hold on step 2 — branding",
+      "desc": "Hold on step 2 \u2014 branding",
       "action": "wait",
       "duration": 450
     },
     {
       "id": "wizard_step2_business_name",
-      "desc": "Type business name — first input on page",
+      "desc": "Type business name \u2014 first input on page",
       "action": "type",
       "selector": "input:nth-of-type(1)",
       "value": "{{demo_business_name}}"
     },
     {
       "id": "wizard_step2_tagline",
-      "desc": "Type tagline — second input on page",
+      "desc": "Type tagline \u2014 second input on page",
       "action": "type",
       "selector": "input:nth-of-type(2)",
       "value": "{{demo_tagline}}"
@@ -68,7 +68,7 @@
     },
     {
       "id": "wizard_step3_settle",
-      "desc": "Hold on step 3 — cover photo and main message",
+      "desc": "Hold on step 3 \u2014 cover photo and main message",
       "action": "wait",
       "duration": 450
     },
@@ -101,7 +101,7 @@
     },
     {
       "id": "wizard_step4_settle",
-      "desc": "Hold on step 4 — about your business",
+      "desc": "Hold on step 4 \u2014 about your business",
       "action": "wait",
       "duration": 450
     },
@@ -134,7 +134,7 @@
     },
     {
       "id": "wizard_step5_settle",
-      "desc": "Hold on step 5 — launch",
+      "desc": "Hold on step 5 \u2014 launch",
       "action": "wait",
       "duration": 450
     },
@@ -152,7 +152,7 @@
     },
     {
       "id": "wizard_success_hold",
-      "desc": "Hold on success screen — Your site is live",
+      "desc": "Hold on success screen \u2014 Your site is live",
       "action": "wait",
       "duration": 1500
     },
