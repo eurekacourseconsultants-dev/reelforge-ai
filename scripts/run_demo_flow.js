@@ -61,7 +61,6 @@ async function injectCursor(page, mobile = false) {
     if (mobile) {
       // Tap circle for mobile
       svg.innerHTML = `
-        
         <circle cx="18" cy="18" r="8" fill="orange"/>
       `;
     } else {
@@ -136,7 +135,6 @@ async function getElementByText(page, text) {
 
 // ─── Scroll to element ────────────────────────────────────────────────────────
 async function scrollToTarget(page, target, offset = 0) {
-  // Multi-flick scroll: fast flick, then precise snap
   const targetY = await page.evaluate((sel) => {
     const el = document.querySelector(sel);
     if (!el) return null;
@@ -148,14 +146,30 @@ async function scrollToTarget(page, target, offset = 0) {
   const currentY = await page.evaluate(() => window.scrollY);
   const distance = targetY - currentY;
 
-  // Single smooth scroll to exact target position — no double-scroll jitter
-  const FLICK_STEPS = 30;
+  await page.evaluate(() => {
+    const s = document.createElement('style');
+    s.id = '__demo_freeze';
+    s.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; overflow-anchor: none !important; }';
+    document.head.appendChild(s);
+  });
+
+  const FLICK_STEPS = 25;
   for (let i = 1; i <= FLICK_STEPS; i++) {
     const t = easeOut(i / FLICK_STEPS);
     await page.evaluate((y) => window.scrollTo(0, y), currentY + distance * t);
-    await sleep(16);
+    await sleep(18);
   }
-  await sleep(300); // settle
+  await sleep(1200);
+
+  await page.evaluate(() => {
+    const s = document.getElementById('__demo_freeze');
+    if (s) s.remove();
+  });
+
+  if (offset !== 0) {
+    await page.evaluate((y) => window.scrollBy(0, y), offset);
+    await sleep(300);
+  }
 }
 
 // ─── Human typing ─────────────────────────────────────────────────────────────
@@ -164,7 +178,6 @@ async function humanType(page, selector, text) {
   await sleep(80 + Math.random() * 60);
   for (const char of text) {
     await page.keyboard.type(char);
-    // Tight but varied: 35–75ms between keystrokes
     await sleep(35 + Math.random() * 40);
   }
 }
@@ -173,9 +186,22 @@ async function humanType(page, selector, text) {
 async function handleNavigate(page, step, cursorPos) {
   const url = interpolate(step.url);
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+  
+  // Inject permanent layout baseline to block scrolling shifts and anchor conflicts
+  await page.evaluate(() => {
+    if (!document.getElementById('__automation_baseline')) {
+      const style = document.createElement('style');
+      style.id = '__automation_baseline';
+      style.textContent = `
+        html, body { scroll-behavior: auto !important; overflow-anchor: none !important; }
+      `;
+      document.head.appendChild(style);
+    }
+  });
+
   await injectCursor(page, isMobile);
   await moveCursor(page, cursorPos.x, cursorPos.y);
-  await sleep(step.settle || 200); // settle: fresh page navigation
+  await sleep(step.settle || 200);
 }
 
 async function handleWait(page, step) {
@@ -185,8 +211,6 @@ async function handleWait(page, step) {
 async function handleScroll(page, step, cursorPos, isMobile) {
   const target = (isMobile && step.mobile_target) ? step.mobile_target : step.target;
   await scrollToTarget(page, target, step.offset || 0);
-  // After scroll, reset cursor to centre of current viewport
-  // so next glide always starts from a visible position
   const viewportCentre = await page.evaluate(() => ({
     x: window.innerWidth / 2,
     y: window.innerHeight / 2,
@@ -194,14 +218,13 @@ async function handleScroll(page, step, cursorPos, isMobile) {
   await moveCursor(page, viewportCentre.x, viewportCentre.y);
   cursorPos.x = viewportCentre.x;
   cursorPos.y = viewportCentre.y;
-  await sleep(500); // recorder needs 2-3 frames to capture cursor at new position before glide
+  await sleep(500);
 }
 
 async function handleClick(page, step, cursorPos) {
   let center;
 
   if (step.textContains) {
-    // Find by visible text
     const el = await getElementByText(page, step.textContains);
     const box = await el.asElement()?.boundingBox();
     if (!box) throw new Error(`textContains element not found: "${step.textContains}"`);
@@ -214,11 +237,9 @@ async function handleClick(page, step, cursorPos) {
     if (!center) throw new Error(`Selector not found: ${step.selector}`);
   }
 
-  // Glide cursor to element
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
   await sleep(120);
 
-  // DOM click (bypasses opacity/pointer-events issues from .animate transitions)
   if (step.textContains) {
     await page.evaluate((text) => {
       const all = document.querySelectorAll('*');
@@ -251,9 +272,8 @@ async function handleClickNavigate(page, step, cursorPos) {
   }
 
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
-  await sleep(120); // post-click pause
+  await sleep(120);
 
-  // Fire DOM click + wait for navigation
   const navPromise = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null);
 
   if (step.textContains) {
@@ -272,7 +292,6 @@ async function handleClickNavigate(page, step, cursorPos) {
 
   await navPromise;
 
-  // Verify we actually navigated somewhere expected
   const currentUrl = page.url();
   if (step.expected_url_contains && !currentUrl.includes(step.expected_url_contains)) {
     throw new Error(
@@ -282,7 +301,7 @@ async function handleClickNavigate(page, step, cursorPos) {
 
   await injectCursor(page, isMobile);
   await moveCursor(page, cursorPos.x, cursorPos.y);
-  await sleep(200); // settle: fresh page navigation
+  await sleep(200);
 
   cursorPos.x = center.x;
   cursorPos.y = center.y;
@@ -293,7 +312,6 @@ async function handleType(page, step, cursorPos) {
   const center = await getElementCenter(page, step.selector);
   if (!center) throw new Error(`Type target not found: ${step.selector}`);
 
-  // Glide to field, click it, then type
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
   await sleep(80);
   await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, step.selector);
@@ -322,14 +340,13 @@ async function handleHover(page, step, cursorPos) {
   if (!center) { console.warn(`  Hover target not found (skipping): ${step.selector}`); return; }
 
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
-  await sleep(150 + Math.random() * 200); // hover dwell: 150–350ms
+  await sleep(150 + Math.random() * 200);
 
   cursorPos.x = center.x;
   cursorPos.y = center.y;
 }
 
 async function handleVisualClick(page, step, cursorPos) {
-  // Move cursor and do mouse down/up — does NOT trigger navigation
   const center = await getElementCenter(page, step.selector);
   if (!center) throw new Error(`visual_click target not found: ${step.selector}`);
 
@@ -343,10 +360,8 @@ async function handleVisualClick(page, step, cursorPos) {
   cursorPos.y = center.y;
 }
 
-// Click the nearest ancestor div of a text node — used for custom checkboxes
 async function handleClickByText(page, step, cursorPos) {
   const text = step.containsText;
-  // Find the outer container, then click its FIRST CHILD div (the 18x18 checkbox box)
   const box = await page.evaluate((text) => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -357,7 +372,6 @@ async function handleClickByText(page, step, cursorPos) {
           if (!el) break;
           const style = window.getComputedStyle(el);
           if (style.cursor === 'pointer') {
-            // Found the outer clickable container — get its first child div (the checkbox box)
             const checkboxBox = el.querySelector('div');
             if (checkboxBox) {
               const r = checkboxBox.getBoundingClientRect();
@@ -376,7 +390,6 @@ async function handleClickByText(page, step, cursorPos) {
   await glideCursor(page, cursorPos.x, cursorPos.y, box.x, box.y);
   await sleep(80);
 
-  // Click the inner checkbox div directly
   await page.evaluate((text) => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -387,7 +400,7 @@ async function handleClickByText(page, step, cursorPos) {
           if (!el) break;
           const style = window.getComputedStyle(el);
           if (style.cursor === 'pointer') {
-            el.click(); // click the outer div which has the onClick handler
+            el.click();
             return;
           }
           el = el.parentElement;
@@ -412,6 +425,8 @@ async function handleClickByText(page, step, cursorPos) {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--run-all-compositor-stages-before-draw',
+      '--enable-usermedia-screen-capturing',
+      '--use-fake-ui-for-media-stream',
     ],
     defaultViewport: isMobile
       ? { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
@@ -420,14 +435,12 @@ async function handleClickByText(page, step, cursorPos) {
 
   const page = await browser.newPage();
 
-  // Force 60fps tick rate in headless
   const client = await page.createCDPSession();
   await client.send('Animation.setPlaybackRate', { playbackRate: 1 });
 
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
     fps: 30,
-
     videoCrf: 18,
     videoCodec: 'libx264',
     videoPreset: 'ultrafast',
@@ -438,7 +451,6 @@ async function handleClickByText(page, step, cursorPos) {
   console.log('Starting recording...');
   await recorder.start(outputVideo);
 
-  // Cursor position state (shared across steps)
   const cursorPos = { x: 640, y: 400 };
 
   try {
@@ -456,6 +468,122 @@ async function handleClickByText(page, step, cursorPos) {
         case 'scroll':
           await handleScroll(page, step, cursorPos, isMobile);
           break;
+        case 'scroll_into_view_chain': {
+          // Multiple scroll legs, all run back-to-back INSIDE one evaluate
+          // call — zero Node<->browser round-trips between legs, so there
+          // is no inter-leg delay at all.
+          const legs = (isMobile && step.mobile_legs) ? step.mobile_legs : step.legs;
+          await page.evaluate((legs) => {
+            const freeze = document.createElement('style');
+            freeze.id = '__demo_freeze';
+            freeze.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; overflow-anchor: none !important; } html { scroll-behavior: auto !important; overflow-anchor: none !important; }';
+            document.head.appendChild(freeze);
+
+            function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+            function animateTo(toY, duration) {
+              return new Promise((resolve) => {
+                const from = window.scrollY;
+                const distance = toY - from;
+                const start = performance.now();
+                function step(now) {
+                  const t = Math.min((now - start) / duration, 1);
+                  window.scrollTo(0, from + distance * easeOut(t));
+                  if (t < 1) requestAnimationFrame(step);
+                  else resolve();
+                }
+                requestAnimationFrame(step);
+              });
+            }
+
+            return (async () => {
+              for (const leg of legs) {
+                const el = document.querySelector(leg.target);
+                if (!el) continue;
+                const rect = el.getBoundingClientRect();
+                const elTop = rect.top + window.scrollY;
+                const targetY = leg.block === 'center'
+                  ? elTop - (window.innerHeight - rect.height) / 2
+                  : elTop - (leg.nav_offset || 0);
+                await animateTo(Math.max(0, targetY), leg.duration || 600);
+              }
+              freeze.remove();
+            })();
+          }, legs);
+
+          await sleep(step.final_settle_ms ?? 400); // pause only AFTER the last leg lands, none between legs
+          const viewportCentre = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+          await moveCursor(page, viewportCentre.x, viewportCentre.y);
+          cursorPos.x = viewportCentre.x;
+          cursorPos.y = viewportCentre.y;
+          break;
+        }
+        case 'scroll_into_view': {
+          // Supports either a single target (target/mobile_target/block/nav_offset)
+          // OR a chain of legs (legs/mobile_legs — each {target, block, nav_offset}).
+          // All legs run back-to-back INSIDE one evaluate call — zero delay
+          // between legs, since long single scrolls land unreliably.
+          // A settle delay only happens ONCE, after the final leg lands,
+          // before the cursor starts moving toward the click target.
+          let legs = (isMobile && step.mobile_legs) ? step.mobile_legs : step.legs;
+          if (!legs) {
+            legs = [{
+              target: (isMobile && step.mobile_target) ? step.mobile_target : step.target,
+              block: step.block || 'start',
+              nav_offset: step.nav_offset || 0,
+            }];
+          }
+
+          await page.evaluate(() => {
+            const freeze = document.createElement('style');
+            freeze.id = '__demo_freeze';
+            freeze.textContent = `
+              *, *::before, *::after { animation: none !important; transition: none !important; overflow-anchor: none !important; }
+              html, body { scroll-behavior: auto !important; overflow-anchor: none !important; }
+            `;
+            document.head.appendChild(freeze);
+          });
+
+          for (const leg of legs) {
+            await page.evaluate((leg) => {
+              const el = document.querySelector(leg.target);
+              if (!el) return Promise.resolve();
+              const rect = el.getBoundingClientRect();
+              const elTop = rect.top + window.scrollY;
+              const targetY = leg.block === 'center'
+                ? elTop - (window.innerHeight - rect.height) / 2
+                : elTop - (leg.nav_offset || 0);
+              const from = window.scrollY;
+              const to = Math.max(0, targetY);
+              const distance = to - from;
+              const duration = leg.duration || 600;
+              const start = performance.now();
+              function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+              return new Promise((resolve) => {
+                function step(now) {
+                  const t = Math.min((now - start) / duration, 1);
+                  window.scrollTo(0, from + distance * easeOut(t));
+                  if (t < 1) requestAnimationFrame(step);
+                  else resolve();
+                }
+                requestAnimationFrame(step);
+              });
+            }, leg);
+            await sleep(leg.delay_after_ms ?? 0); // slight pause between legs
+          }
+
+          await page.evaluate(() => {
+            const f = document.getElementById('__demo_freeze');
+            if (f) f.remove();
+          });
+
+          await sleep(step.final_settle_ms ?? 400); // beat on the landed target before the cursor moves
+          const viewportCentre = await page.evaluate(() => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }));
+          await moveCursor(page, viewportCentre.x, viewportCentre.y);
+          cursorPos.x = viewportCentre.x;
+          cursorPos.y = viewportCentre.y;
+          break;
+        }
         case 'scroll_by':
           await page.evaluate((y) => window.scrollBy(0, y), step.y);
           await sleep(500);
