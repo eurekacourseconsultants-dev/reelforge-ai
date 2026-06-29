@@ -1,0 +1,55 @@
+{
+  "id": "wizard_website_templates",
+  "title": "Setup Wizard + Website + Templates",
+  "description": "Walkthrough of the LaunchSteady setup wizard, website editor, and template selection.",
+  "fields": [
+    {
+      "id": "demo_business_name",
+      "label": "Business name",
+      "type": "text",
+      "placeholder": "Sarah's Bakery",
+      "required": true,
+      "hint": "Typed into the business name field in the wizard"
+    },
+    {
+      "id": "demo_tagline",
+      "label": "Tagline",
+      "type": "text",
+      "placeholder": "Fresh baked with love every day",
+      "required": true,
+      "hint": "Short one-liner shown below your business name"
+    },
+    {
+      "id": "demo_headline",
+      "label": "Main headline",
+      "type": "text",
+      "placeholder": "Freshly baked, delivered to your door",
+      "required": true,
+      "hint": "The big bold text visitors see first on your website"
+    },
+    {
+      "id": "demo_subheadline",
+      "label": "Supporting text",
+      "type": "text",
+      "placeholder": "Artisan sourdough and pastries made fresh every morning.",
+      "required": true,
+      "hint": "One or two sentences below the main headline"
+    },
+    {
+      "id": "demo_about_title",
+      "label": "About section heading",
+      "type": "text",
+      "placeholder": "Our story",
+      "required": true,
+      "hint": "Title of the About Us section on your website"
+    },
+    {
+      "id": "demo_about_body",
+      "label": "About body text",
+      "type": "text",
+      "placeholder": "We started in 2019 with one oven and a love for good bread.",
+      "required": true,
+      "hint": "A short paragraph about your business"
+    }
+  ]
+}

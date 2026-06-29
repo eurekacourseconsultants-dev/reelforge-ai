@@ -1,0 +1,230 @@
+{
+  "id": "wizard_website_templates",
+  "start_url": "https://launchsteady.sg/dashboard/wizard/step-1",
+  "steps": [
+    {
+      "id": "wizard_step1_land",
+      "desc": "Navigate to wizard step 1 — template selection",
+      "action": "navigate",
+      "url": "https://launchsteady.sg/dashboard/wizard/step-1"
+    },
+    {
+      "id": "wizard_step1_settle",
+      "desc": "Hold for page to load templates",
+      "action": "wait",
+      "duration": 800
+    },
+    {
+      "id": "wizard_step1_select_template",
+      "desc": "Click the first template card in the grid",
+      "action": "click",
+      "selector": "div[style*='grid-template-columns'] > button:nth-child(1)"
+    },
+    {
+      "id": "wizard_step1_hold",
+      "desc": "Hold after template selection",
+      "action": "wait",
+      "duration": 400
+    },
+    {
+      "id": "wizard_step1_continue",
+      "desc": "Click Continue to go to step 2",
+      "action": "click_navigate",
+      "textContains": "Continue",
+      "expected_url_contains": "/wizard/step-2"
+    },
+    {
+      "id": "wizard_step2_settle",
+      "desc": "Hold on step 2 — branding",
+      "action": "wait",
+      "duration": 450
+    },
+    {
+      "id": "wizard_step2_business_name",
+      "desc": "Type business name — first input on page",
+      "action": "type",
+      "selector": "input:nth-of-type(1)",
+      "value": "{{demo_business_name}}"
+    },
+    {
+      "id": "wizard_step2_tagline",
+      "desc": "Type tagline — second input on page",
+      "action": "type",
+      "selector": "input:nth-of-type(2)",
+      "value": "{{demo_tagline}}"
+    },
+    {
+      "id": "wizard_step2_hold",
+      "desc": "Hold on step 2 before continuing",
+      "action": "wait",
+      "duration": 400
+    },
+    {
+      "id": "wizard_step2_continue",
+      "desc": "Click Continue to go to step 3",
+      "action": "click_navigate",
+      "textContains": "Continue",
+      "expected_url_contains": "/wizard/step-3"
+    },
+    {
+      "id": "wizard_step3_settle",
+      "desc": "Hold on step 3 — cover photo and main message",
+      "action": "wait",
+      "duration": 450
+    },
+    {
+      "id": "wizard_step3_headline",
+      "desc": "Type main headline",
+      "action": "type",
+      "selector": "input[maxlength='100']",
+      "value": "{{demo_headline}}"
+    },
+    {
+      "id": "wizard_step3_subheadline",
+      "desc": "Type supporting text",
+      "action": "type",
+      "selector": "textarea[maxlength='200']",
+      "value": "{{demo_subheadline}}"
+    },
+    {
+      "id": "wizard_step3_hold",
+      "desc": "Hold on step 3 before continuing",
+      "action": "wait",
+      "duration": 400
+    },
+    {
+      "id": "wizard_step3_continue",
+      "desc": "Click Continue to go to step 4",
+      "action": "click_navigate",
+      "textContains": "Continue",
+      "expected_url_contains": "/wizard/step-4"
+    },
+    {
+      "id": "wizard_step4_settle",
+      "desc": "Hold on step 4 — about your business",
+      "action": "wait",
+      "duration": 450
+    },
+    {
+      "id": "wizard_step4_about_title",
+      "desc": "Type about section heading",
+      "action": "type",
+      "selector": "input[maxlength='80']",
+      "value": "{{demo_about_title}}"
+    },
+    {
+      "id": "wizard_step4_about_body",
+      "desc": "Type about body text",
+      "action": "type",
+      "selector": "textarea[maxlength='800']",
+      "value": "{{demo_about_body}}"
+    },
+    {
+      "id": "wizard_step4_hold",
+      "desc": "Hold on step 4 before continuing",
+      "action": "wait",
+      "duration": 400
+    },
+    {
+      "id": "wizard_step4_continue",
+      "desc": "Click Continue to go to step 5",
+      "action": "click_navigate",
+      "textContains": "Continue",
+      "expected_url_contains": "/wizard/step-5"
+    },
+    {
+      "id": "wizard_step5_settle",
+      "desc": "Hold on step 5 — launch",
+      "action": "wait",
+      "duration": 450
+    },
+    {
+      "id": "wizard_step5_hold",
+      "desc": "Hold to show the launch screen",
+      "action": "wait",
+      "duration": 500
+    },
+    {
+      "id": "wizard_step5_launch",
+      "desc": "Click Launch my site button",
+      "action": "click_by_text",
+      "containsText": "Launch my site"
+    },
+    {
+      "id": "wizard_success_hold",
+      "desc": "Hold on success screen — Your site is live",
+      "action": "wait",
+      "duration": 1500
+    },
+    {
+      "id": "templates_navigate",
+      "desc": "Navigate to Templates page",
+      "action": "navigate",
+      "url": "https://launchsteady.sg/dashboard/templates"
+    },
+    {
+      "id": "templates_settle",
+      "desc": "Hold on templates page to load cards",
+      "action": "wait",
+      "duration": 700
+    },
+    {
+      "id": "templates_scroll",
+      "desc": "Scroll to template grid",
+      "action": "scroll_into_view",
+      "legs": [
+        {
+          "target": "div[style*='grid-template-columns: repeat(3']",
+          "block": "start",
+          "nav_offset": 80,
+          "duration": 600
+        }
+      ],
+      "final_settle_ms": 500
+    },
+    {
+      "id": "templates_click_second",
+      "desc": "Click second template card",
+      "action": "click",
+      "selector": "div[style*='grid-template-columns: repeat(3'] > button:nth-child(2)"
+    },
+    {
+      "id": "templates_hold",
+      "desc": "Hold to show template selected",
+      "action": "wait",
+      "duration": 800
+    },
+    {
+      "id": "website_navigate",
+      "desc": "Navigate to Website Editor",
+      "action": "navigate",
+      "url": "https://launchsteady.sg/dashboard/website"
+    },
+    {
+      "id": "website_settle",
+      "desc": "Hold on website editor to load",
+      "action": "wait",
+      "duration": 700
+    },
+    {
+      "id": "website_scroll_sections",
+      "desc": "Scroll down to show section cards",
+      "action": "scroll_into_view",
+      "legs": [
+        {
+          "target": "div[style*='flex-direction: column'][style*='gap']",
+          "block": "start",
+          "nav_offset": 80,
+          "duration": 600
+        }
+      ],
+      "final_settle_ms": 500
+    },
+    {
+      "id": "website_hold",
+      "desc": "Hold on website editor to end demo",
+      "action": "wait",
+      "duration": 800
+    }
+  ]
+}
