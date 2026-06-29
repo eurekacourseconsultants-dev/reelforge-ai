@@ -196,7 +196,7 @@
       "id": "login_page_settle",
       "desc": "Wait for login page to fully load",
       "action": "wait",
-      "duration": 2500
+      "duration": 450
     },
     {
       "id": "login_email",
