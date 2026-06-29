@@ -71,7 +71,7 @@ export default function VideosPage() {
         {videos.map(v => (
           <div key={v.key} style={{ display: 'flex', alignItems: 'center', gap: '14px', background: C.surface, border: '1px solid ' + C.border, borderRadius: '10px', padding: '10px 14px', minHeight: '72px' }}>
             <div onClick={() => setModal(v)} style={{ flexShrink: 0, cursor: 'pointer', width: isPortrait(v.key) ? '36px' : '64px', height: '56px', borderRadius: '6px', overflow: 'hidden', background: '#000', position: 'relative' }}>
-              <video src={v.url + '#t=3'} preload="metadata" muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <video src={v.url + '#t=3'} preload="none" muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)' }}>
                 <div style={{ width: 0, height: 0, borderTop: '5px solid transparent', borderBottom: '5px solid transparent', borderLeft: '8px solid white', marginLeft: '2px' }} />
               </div>
