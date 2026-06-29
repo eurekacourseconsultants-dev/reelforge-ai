@@ -45,6 +45,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/run_demo_flow.js '${{ inputs.demo_type }}' '${{ inputs.variables }}'
 
+      - name: Check desktop video
+        run: ls -lh /tmp/demo_raw_signup_login_desktop.mp4 || echo "FILE MISSING"
+
       - name: Run demo flow — mobile
         env:
           JOB_ID: ${{ inputs.job_id }}
