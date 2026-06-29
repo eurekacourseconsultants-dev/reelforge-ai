@@ -314,12 +314,16 @@ async function handleType(page, step, cursorPos) {
 
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
   await sleep(80);
-  await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, step.selector);
-  await page.focus(step.selector);
-  await sleep(60);
-  await page.click(step.selector, { clickCount: 3 });
-  await sleep(40);
-  await humanType(page, step.selector, value);
+  await page.evaluate((sel, val) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.focus();
+    const nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    nativeInput.call(el, val);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, step.selector, value);
+  await sleep(150);
 
   cursorPos.x = center.x;
   cursorPos.y = center.y;
