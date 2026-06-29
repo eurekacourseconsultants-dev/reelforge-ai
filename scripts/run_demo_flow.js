@@ -315,6 +315,7 @@ async function handleType(page, step, cursorPos) {
   await glideCursor(page, cursorPos.x, cursorPos.y, center.x, center.y);
   await sleep(80);
   await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, step.selector);
+  await page.focus(step.selector);
   await sleep(60);
   await humanType(page, step.selector, value);
 
