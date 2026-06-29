@@ -317,6 +317,8 @@ async function handleType(page, step, cursorPos) {
   await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) el.click(); }, step.selector);
   await page.focus(step.selector);
   await sleep(60);
+  await page.click(step.selector, { clickCount: 3 });
+  await sleep(40);
   await humanType(page, step.selector, value);
 
   cursorPos.x = center.x;
