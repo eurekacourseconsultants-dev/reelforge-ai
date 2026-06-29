@@ -177,7 +177,13 @@ async function humanType(page, selector, text) {
   await page.focus(selector);
   await sleep(80 + Math.random() * 60);
   for (const char of text) {
-    await page.keyboard.type(char);
+    await page.evaluate((sel, c) => {
+      const el = document.querySelector(sel);
+      if (!el) return;
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(el, el.value + c);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, selector, char);
     await sleep(35 + Math.random() * 40);
   }
 }
