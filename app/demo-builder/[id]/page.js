@@ -26,7 +26,7 @@ const DEMO_LABELS = {
 
 const SCHEMAS = {
   wizard_website_templates: [
-    { id: 'demo_business_name', label: 'Business name',        placeholder: "Sarah's Bakery" },
+    { id: 'demo_business_name', label: 'Business name',        placeholder: 'Sarahs Bakery' },
     { id: 'demo_tagline',       label: 'Tagline',              placeholder: 'Fresh baked with love every day' },
     { id: 'demo_headline',      label: 'Main headline',        placeholder: 'Freshly baked, delivered to your door' },
     { id: 'demo_subheadline',   label: 'Supporting text',      placeholder: 'Artisan sourdough and pastries made fresh every morning.' },
@@ -34,7 +34,7 @@ const SCHEMAS = {
     { id: 'demo_about_body',    label: 'About body text',      placeholder: 'We started in 2019 with one oven and a love for good bread.' },
   ],
   wizard_website_templates: [
-    { id: 'demo_business_name', label: 'Business name',        placeholder: "Sarah's Bakery" },
+    { id: 'demo_business_name', label: 'Business name',        placeholder: 'Sarahs Bakery' },
     { id: 'demo_tagline',       label: 'Tagline',              placeholder: 'Fresh baked with love every day' },
     { id: 'demo_headline',      label: 'Main headline',        placeholder: 'Freshly baked, delivered to your door' },
     { id: 'demo_subheadline',   label: 'Supporting text',      placeholder: 'Artisan sourdough and pastries made fresh every morning.' },

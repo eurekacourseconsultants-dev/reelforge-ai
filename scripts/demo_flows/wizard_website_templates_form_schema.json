@@ -7,7 +7,7 @@
       "id": "demo_business_name",
       "label": "Business name",
       "type": "text",
-      "placeholder": "Sarah's Bakery",
+      "placeholder": "Sarahs Bakery",
       "required": true,
       "hint": "Typed into the business name field in the wizard"
     },
