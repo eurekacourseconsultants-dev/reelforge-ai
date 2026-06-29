@@ -10,16 +10,41 @@
     },
     {
       "id": "landing_scroll_pricing",
-      "desc": "Scroll to CTA on desktop, pricing section on mobile",
-      "action": "scroll",
-      "target": ".pricing-grid > div:nth-child(1) a.btn",
-      "mobile_target": "#pricing"
-    },
-    {
-      "id": "landing_hold",
-      "desc": "Hold on pricing section so viewer can see it before CTA click",
-      "action": "wait",
-      "duration": 3000
+      "desc": "Scroll: hero -> comparison section (no delay) -> Professional card (settle before click)",
+      "action": "scroll_into_view",
+      "legs": [
+        {
+          "target": "#comparison",
+          "block": "start",
+          "nav_offset": 90,
+          "duration": 600,
+          "delay_after_ms": 550
+        },
+        {
+          "target": ".pricing-grid > div:nth-child(2)",
+          "block": "start",
+          "nav_offset": 90,
+          "duration": 600,
+          "delay_after_ms": 200
+        }
+      ],
+      "mobile_legs": [
+        {
+          "target": "#comparison",
+          "block": "start",
+          "nav_offset": 90,
+          "duration": 600,
+          "delay_after_ms": 550
+        },
+        {
+          "target": ".pricing-grid > div:nth-child(2)",
+          "block": "start",
+          "nav_offset": 90,
+          "duration": 600,
+          "delay_after_ms": 200
+        }
+      ],
+      "final_settle_ms": 550
     },
     {
       "id": "landing_cta",
@@ -27,6 +52,12 @@
       "action": "click_navigate",
       "selector": ".pricing-grid > div:nth-child(2) a.btn",
       "expected_url_contains": "/signup"
+    },
+    {
+      "id": "landing_cta_post_wait",
+      "desc": "Brief pause on signup page after CTA click before continuing",
+      "action": "wait",
+      "duration": 450
     },
     {
       "id": "signup_fullname",
@@ -121,7 +152,7 @@
       "id": "package_select",
       "desc": "Click Professional plan \u2014 3rd package card button",
       "action": "click_navigate",
-      "selector": ".package-card:nth-child(3) button.btn",
+      "selector": ".package-grid > div:nth-child(3) button.btn",
       "expected_url_contains": "/onboarding/billing"
     },
     {
